@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Ergebnisse der Render-Läufe — erzeugt, nicht gepflegt.
+docs/render/ergebnis/
+docs/render/mobil/
