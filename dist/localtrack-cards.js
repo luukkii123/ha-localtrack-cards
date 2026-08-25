@@ -15,7 +15,7 @@
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.1.1";
+const CARD_VERSION = "0.1.2";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -410,6 +410,9 @@ class LocaltrackTimelineCard extends HTMLElement {
   set hass(hass) {
     const previous = this._hass;
     this._hass = hass;
+    // The title needs `hass` to resolve a friendly name, and `_build` runs
+    // before `hass` ever arrives — so it has to be refreshed here too.
+    this._syncTitle();
     if (!this._config) return;
     if (!previous) {
       this._loadDay();
@@ -464,7 +467,14 @@ class LocaltrackTimelineCard extends HTMLElement {
   _build() {
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; }
+        /* position + z-index make the host its own stacking context, and that
+           is the whole point: Leaflet paints its controls at z-index 1000 and
+           its panes at 400-700. Without a stacking context here those numbers
+           compete in the page's root context, so the map floated over Home
+           Assistant's dialogs and more-info popups. Confined to the host, the
+           card as a whole stacks at 0 and every overlay wins.
+           No backticks in this comment — they would end the template literal. */
+        :host { display: block; position: relative; z-index: 0; }
         .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .title { font-size: 1.1em; font-weight: 600; }
         .controls { display: flex; gap: 8px; align-items: center; }
@@ -518,7 +528,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._segmentsEl = this.shadowRoot.querySelector(".segments");
 
     const config = this._config || {};
-    this._titleEl.textContent = config.title || this._config.entity || "";
+    this._syncTitle();
     this._mapEl.style.height = `${config.height}px`;
     const scrubber = this.shadowRoot.querySelector(".scrubber");
     scrubber.style.display = config.show_scrubber === false ? "none" : "";
@@ -576,6 +586,19 @@ class LocaltrackTimelineCard extends HTMLElement {
     } finally {
       this._loading = false;
     }
+  }
+
+  _syncTitle() {
+    if (!this._titleEl || !this._config) return;
+    // Everywhere else in Home Assistant the user sees "Lukas", not
+    // `person.lukas`. An explicit `title:` in the card config still wins; the
+    // entity id is only the last resort for an entity that has no name yet.
+    const state = this._hass?.states?.[this._config.entity];
+    this._titleEl.textContent =
+      this._config.title ||
+      state?.attributes?.friendly_name ||
+      this._config.entity ||
+      "";
   }
 
   _errorMessage(error) {
