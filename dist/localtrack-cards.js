@@ -15,7 +15,7 @@
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.1.0";
+const CARD_VERSION = "0.1.1";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -579,10 +579,25 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   _errorMessage(error) {
-    if (error?.code === "not_found") {
-      return "Local-Track-Integration nicht eingerichtet.";
+    const code = error?.code;
+    // Two different codes mean the same thing to a user, and only one of them
+    // was handled before. `not_found` comes from the command itself while the
+    // entry is unloaded — but the command is registered in `async_setup_entry`,
+    // so an entry that was never created leaves it unregistered and Home
+    // Assistant answers `unknown_command`. That fell through to the generic
+    // text and hid the one thing worth saying.
+    if (code === "not_found" || code === "unknown_command") {
+      return "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen → Local Track.";
     }
-    return "Daten konnten nicht geladen werden.";
+    if (code === "unauthorized") {
+      return "Keine Berechtigung für Local Track.";
+    }
+    // Never swallow the rest: without the message the card says nothing that
+    // helps, which is what sent this bug back as "es geht einfach nicht".
+    const detail = error?.message || code;
+    return detail
+      ? `Daten konnten nicht geladen werden: ${detail}`
+      : "Daten konnten nicht geladen werden.";
   }
 
   async _ensureMap() {
