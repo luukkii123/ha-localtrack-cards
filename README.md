@@ -188,7 +188,7 @@ show_gross: true               # optional
 | `zone` | — | Pflicht. Eine `zone.*` mit Mittelpunkt und Radius |
 | `title` | Name der Zone | Überschrift |
 | `min_visit_minutes` | 5 | Kürzere Aufenthalte zählen **gar nicht** |
-| `max_gap_minutes` | 15 | So viel wird von einer Datenlücke höchstens gutgeschrieben |
+| `max_gap_minutes` | 30 | So viel wird von einer Datenlücke höchstens gutgeschrieben |
 | `show_gross` | `true` | Bruttospalte ein- oder ausblenden |
 
 **Die Menüs füllen sich selbst.** Personen kommen aus `localtrack/stats`, also
@@ -208,6 +208,14 @@ Datenloch. Ist das Handy zwei Stunden aus, schreibt netto nur
 `max_gap_minutes` gut, statt zwei Stunden zu erfinden; brutto zeigt die Spanne
 trotzdem. **Lieber zu wenig als erfunden** ist die Regel, und die zweite Spalte
 macht die Lücke sichtbar, statt sie zu verstecken.
+
+**Wenn netto viel kleiner als brutto ist, liegt es meist am Handy.** Die
+Companion-App meldet nach Bewegung, nicht nach Uhr: an einem Tag unterwegs
+kamen 4232 Punkte im 30-Sekunden-Takt, an einem Tag zu Hause nur 141 mit
+Lücken über einer Stunde. Ein guter Hinweis steht unter der Liste — zerfällt
+ein Tag in zwanzig Aufenthalte, ist `max_gap_minutes` zu niedrig. 60 Minuten
+sind für Sitztage vertretbar; höher wird es riskant, weil dann eine echte
+Abwesenheit als Anwesenheit durchgeht.
 
 **`min_visit_minutes` ist wichtiger, als es aussieht.** Eine Zone mit 19 m
 Radius ist kleiner als die übliche GPS-Streuung; ohne die Schwelle sammelt

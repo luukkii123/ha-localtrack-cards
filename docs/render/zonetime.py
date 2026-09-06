@@ -229,7 +229,10 @@ with sync_playwright() as pw:
         };
         let geliefert = null;
         el.addEventListener('config-changed', (e) => { geliefert = e.detail.config; });
-        form.fire({ min_visit_minutes: 5, max_gap_minutes: 30 });
+        /* 5 ist der Standard und muss weggestrichen werden, 45 weicht ab
+           und muss stehen bleiben. Waehle NIE den aktuellen Standardwert
+           als Abweichung — der Test wird dann still nichtssagend. */
+        form.fire({ min_visit_minutes: 5, max_gap_minutes: 45 });
         out.nachAenderung = geliefert;
         return out;
     }""")
@@ -275,7 +278,7 @@ checks["Monatswechsel loest genau einen weiteren aus"] = nach == 2
 checks["Monatstitel wechselt auf Oktober"] = titel_neu == "Oktober 2026"
 checks["Standardwerte greifen ohne Konfiguration"] = (
     wide["wsZoneTime"][0]["min_visit_s"] == 300
-    and wide["wsZoneTime"][0]["max_gap_s"] == 900
+    and wide["wsZoneTime"][0]["max_gap_s"] == 1800
 )
 checks["Zonenkoordinaten werden mitgeschickt"] = (
     wide["wsZoneTime"][0]["radius"] == 138
@@ -303,7 +306,7 @@ checks["Editor schreibt Standardwerte NICHT"] = (
     "min_visit_minutes" not in editor["nachAenderung"]
 )
 checks["Editor schreibt Abweichungen schon"] = (
-    editor["nachAenderung"].get("max_gap_minutes") == 30
+    editor["nachAenderung"].get("max_gap_minutes") == 45
 )
 checks["keine Konsolenfehler"] = console == []
 checks["keine Seitenfehler"] = errors == []

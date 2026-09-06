@@ -15,7 +15,7 @@
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.2.1";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -890,7 +890,7 @@ const ZONE_TIME_LABELS = {
 
 const ZONE_TIME_DEFAULTS = {
   min_visit_minutes: 5,
-  max_gap_minutes: 15,
+  max_gap_minutes: 30,
   show_gross: true,
 };
 
@@ -1180,7 +1180,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         start: range.start,
         end: range.end,
         min_visit_s: Math.round((this._config.min_visit_minutes ?? 5) * 60),
-        max_gap_s: Math.round((this._config.max_gap_minutes ?? 15) * 60),
+        max_gap_s: Math.round((this._config.max_gap_minutes ?? 30) * 60),
       });
       // Zwischenzeitlich umgeschaltet? Dann gehört diese Antwort nicht mehr
       // auf den Bildschirm.
