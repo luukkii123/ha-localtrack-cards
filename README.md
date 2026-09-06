@@ -1,8 +1,7 @@
 # Local Track Cards
 
-**Drei Lovelace-Karten rund um Standorte: der Tagesverlauf einer Person auf der
-Landkarte, wie lange sie an einem Ort war — und die eingebaute Map-Karte mit
-frei wählbaren Kacheln.**
+**Zwei Lovelace-Karten zu Local Track: der Tagesverlauf einer Person auf der
+Landkarte, und wie lange sie an einem Ort war — Monat für Monat.**
 
 ![Die Timeline-Karte: Route, nummerierte Aufenthalte, Scrubber und Segmentliste](docs/preview-timeline.png)
 
@@ -10,10 +9,15 @@ frei wählbaren Kacheln.**
 | --- | --- |
 | `localtrack-timeline-card` | Tages-Track einer `person.*`- oder `device_tracker.*`-Entität |
 | `localtrack-zone-time-card` | Verweildauer an einem Ort, ein Monat als Tagesliste |
-| `localtrack-map-card` | die eingebaute `map`-Karte mit wählbaren Kacheln |
 
 Beide sind über *Karte hinzufügen* einrichtbar — mit Vorschau und grafischem
 Editor, ohne eine Zeile YAML.
+
+> **Die Landkarten-Karte ist umgezogen.** `localtrack-map-card` heißt seit dem
+> 06.09.2026 **`busch-map-card`** und liegt in
+> [ha-busch-cards](https://github.com/luukkii123/ha-busch-cards). Sie brauchte
+> Local Track nie — dort gehört sie hin, zu den Karten ohne eigene
+> Integration.
 
 ## Voraussetzung
 
@@ -239,94 +243,6 @@ bleibt, denn wegen der sieht man hin.
   `localtrack/zone_time`; wer die Regeln nachlesen will, findet sie im README
   der Integration.
 
-
-## Die Landkarten-Karte
-
-`localtrack-map-card` ist die **eingebaute Map-Karte mit anderen Kacheln** —
-sonst nichts. Aus einer bestehenden Karte wird sie, indem man **nur `type:`
-tauscht**:
-
-```diff
-- type: map
-+ type: custom:localtrack-map-card
-  entities: [person.beispiel]
-  theme_mode: auto
-  hours_to_show: 2
-```
-
-**Diese Karte braucht Local Track nicht.** Sie liegt nur in derselben Datei,
-weil eine HACS-Dashboard-Ressource genau *eine* Datei ausliefert.
-
-### Warum sie nichts nachbaut
-
-Sie erzeugt über `loadCardHelpers()` Home Assistants **eigene** `map`-Karte,
-hängt sie in ihren Shadow-DOM und tauscht danach nur die Kachelebene an deren
-`ha-map.leafletMap` aus. Alles Übrige — `entities` als Zeichenketten wie
-Objekte, Zonenkreise, `hours_to_show`-Spuren, Genauigkeitsringe,
-Personenbilder, `label_mode`, `attribute`, `unit`, `focus`, `name`, `color`,
-`default_zoom`, `auto_fit`, `fit_zones`, `aspect_ratio`, `title`, `cluster`,
-`scale_ruler` — funktioniert nicht *ähnlich*, sondern **identisch, weil es
-dieselbe Karte ist**. Auch ein `custom:auto-entities` davor merkt keinen
-Unterschied.
-
-Nachbauen wäre der teurere Weg gewesen: vierzehn Optionen plus sechs Felder je
-Entität, und bei jedem Home-Assistant-Update droht neue Abweichung.
-
-**Der Preis, offen benannt:** Die Karte greift auf ein internes Element von
-Home Assistant zu (`ha-map.leafletMap`). Ändert sich das, **fällt sie auf HAs
-normale Karte mit deren eigenen Kacheln zurück** — nie auf ein leeres Feld.
-Eine Zeile in der Browser-Konsole sagt dann, dass die Kacheln unverändert
-blieben. Dieser Rückfall ist geprüft, nicht behauptet.
-
-### Kartenvorlagen
-
-| `map_style` | Karte | hell/dunkel |
-| --- | --- | --- |
-| `ha` | Home-Assistant-Standard, Kacheln unangetastet | — |
-| `osm` | OpenStreetMap | nur hell |
-| `carto` *(Standard)* | CARTO Positron / Dark Matter | beides |
-| `voyager` | CARTO Voyager | beides |
-| `satellite` | Esri World Imagery | nur hell |
-| `topo` | OpenTopoMap | nur hell |
-| `custom` | eigene URL | beides |
-
-```yaml
-type: custom:localtrack-map-card
-entities: [person.beispiel]
-map_style: carto           # Vorlage, Standard: carto
-tile_url: ""               # nur bei map_style: custom
-tile_url_dark: ""          # optional; fehlt sie, gilt die helle auch dunkel
-tile_attribution: ""       # Pflicht bei eigener URL, siehe unten
-```
-
-Alles über *Karte hinzufügen* einrichtbar: oben die Kachelfelder, darunter
-Home Assistants **eigener** Map-Editor.
-
-**Hell und dunkel folgen `theme_mode`** (`auto`/`light`/`dark`) wie bei der
-eingebauten Karte; `auto` nimmt den Dunkelmodus von Home Assistant und fällt
-auf die Einstellung des Betriebssystems zurück. Sobald echte dunkle Kacheln im
-Spiel sind, **schaltet die Karte HAs Dunkelfilter ab** — die eingebaute Karte
-invertiert sonst die Kacheln
-(`invert(0.9) hue-rotate(170deg) brightness(1.5) contrast(1.2) saturate(0.3)`),
-und beides zusammen ergibt Matsch. Bei `map_style: ha` bleibt der Filter, wo er
-ist.
-
-**Die Quellenangabe ist keine Kosmetik.** OpenStreetMap, CARTO, Esri und
-OpenTopoMap verlangen sie in ihren Nutzungsbedingungen; für die mitgelieferten
-Vorlagen setzt die Karte sie selbst. **Wer eine eigene URL einträgt, trägt auch
-die eigene Angabe ein** — und prüft die Nutzungsbedingungen des Anbieters.
-Der Kachelserver von OpenStreetMap ist für den Hausgebrauch gedacht, nicht für
-Dauerlast.
-
-### Grenzen
-
-- **Kein Vektor-Rendering.** Die Vorlagen sind Rasterkacheln. Nutzt Home
-  Assistant für die Grundkarte Vektorkacheln, ersetzt die Karte sie durch
-  Raster; wer das nicht will, nimmt `map_style: ha`.
-- **Kein Zwischenspeicher, kein Schlüssel.** Wer einen Anbieter mit Token
-  braucht, trägt ihn in die eigene URL ein.
-- **Kein eigenes Zeichnen.** Marker, Zonen und Spuren gehören der eingebauten
-  Karte; wer sie anders will, ist bei dieser Karte falsch.
 
 ## Lizenz
 
