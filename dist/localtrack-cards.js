@@ -15,7 +15,7 @@
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.1.2";
+const CARD_VERSION = "0.2.0";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -821,6 +821,517 @@ window.customCards.push({
   type: "localtrack-timeline-card",
   name: "Local Track Timeline",
   description: "Tages-Track einer Person — Route, Aufenthalte und Zeit-Scrubber.",
+  preview: true,
+  documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
+});
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Verweildauer-Karte — wie lange war eine Person an einem Ort, Tag für Tag.
+ *
+ * ACHTUNG beim Anhängen weiterer Karten an diese Datei: Es gibt keinen
+ * Modulwrapper, alles teilt sich einen Gültigkeitsbereich, und gleichnamige
+ * Top-Level-Deklarationen überschreiben sich STILLSCHWEIGEND. Deshalb heißt
+ * die Formatierung unten `formatHoursMinutes` und nicht `formatDuration` —
+ * den Namen gibt es schon, er liefert "8 h 12 min" statt "8:12".
+ * `haversineMeters` wird bewusst wiederverwendet, nicht dupliziert.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/** "8:12" statt "8 h 12 min" — eine Spalte, die sich untereinander liest. */
+function formatHoursMinutes(seconds) {
+  if (!seconds || seconds < 30) return "—";
+  const total = Math.round(seconds / 60);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** Erster und letzter Moment eines Monats als lokale ISO-Zeichenkette.
+ *  Ohne Zeitzonenanhang: die Integration liest das als HA-Ortszeit. */
+function monthRange(year, month) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const days = new Date(year, month, 0).getDate();
+  return {
+    start: `${year}-${pad(month)}-01T00:00:00`,
+    end: `${year}-${pad(month)}-${pad(days)}T23:59:59`,
+    days,
+  };
+}
+
+const ZONE_TIME_CARD_SCHEMA = [
+  {
+    name: "entity",
+    required: true,
+    selector: { entity: { filter: { domain: ["person", "device_tracker"] } } },
+  },
+  {
+    name: "zone",
+    required: true,
+    selector: { entity: { filter: { domain: ["zone"] } } },
+  },
+  { name: "title", selector: { text: {} } },
+  {
+    name: "min_visit_minutes",
+    selector: { number: { min: 0, max: 360, step: 1, mode: "box", unit_of_measurement: "min" } },
+  },
+  {
+    name: "max_gap_minutes",
+    selector: { number: { min: 1, max: 1440, step: 1, mode: "box", unit_of_measurement: "min" } },
+  },
+  { name: "show_gross", selector: { boolean: {} } },
+];
+
+const ZONE_TIME_LABELS = {
+  entity: "Person",
+  zone: "Ort (Zone)",
+  title: "Titel",
+  min_visit_minutes: "Aufenthalte kürzer als (min) zählen nicht",
+  max_gap_minutes: "Datenlücken höchstens (min) gutschreiben",
+  show_gross: "Bruttospalte anzeigen",
+};
+
+const ZONE_TIME_DEFAULTS = {
+  min_visit_minutes: 5,
+  max_gap_minutes: 15,
+  show_gross: true,
+};
+
+const ZONE_TIME_MONTHS = [
+  "Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember",
+];
+const ZONE_TIME_WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+const ZONE_TIME_STYLES = `
+  /* position + z-index machen den Host zu einem eigenen Stapelkontext.
+     Diese Karte enthält zwar kein Leaflet, aber die Lehre aus v0.1.2 gilt
+     allgemein: was hier drin an z-index vergeben wird, soll hier drin
+     bleiben und nicht mit Home Assistants Dialogschicht konkurrieren. */
+  :host { display: block; position: relative; z-index: 0; container-type: inline-size; }
+  .head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .title { font-size: 1.1em; font-weight: 600; }
+  .pickers { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pickers select {
+    flex: 1 1 8em; min-width: 0; padding: 4px 6px; font: inherit; font-size: 0.9em;
+    color: var(--primary-text-color); background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px;
+  }
+  .month { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .month button {
+    border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
+    padding: 2px 10px; border-radius: 6px; color: var(--primary-text-color);
+  }
+  .month button:hover { background: var(--secondary-background-color, #e5e5e5); }
+  .month .label { min-width: 10em; text-align: center; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { font-size: 0.75em; font-weight: 600; text-transform: uppercase;
+       color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 4px; }
+  th.day { text-align: left; }
+  td { padding: 3px 0; font-size: 0.92em; border-top: 1px solid var(--divider-color, #e0e0e0); }
+  td.day { white-space: nowrap; }
+  td.num { text-align: right; padding-left: 10px; white-space: nowrap; }
+  td.bar { width: 34%; padding-left: 10px; }
+  tr.weekend td.day { color: var(--secondary-text-color, #727272); }
+  tr.empty td { color: var(--disabled-text-color, #bdbdbd); }
+  tr.today td { font-weight: 700; }
+  .fill { height: 8px; border-radius: 4px; background: var(--primary-color, #03a9f4); min-width: 2px; }
+  tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0); font-weight: 600; padding-top: 6px; }
+  .note { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color, #727272); }
+  .status { padding: 14px 0; text-align: center; color: var(--secondary-text-color, #727272); font-size: 0.9em; }
+  .status[hidden] { display: none; }
+  /* Schmale Karte: die Bruttospalte und der Balken fliegen zuerst raus,
+     die Nettozahl ist die, wegen der man hinsieht. */
+  @container (max-width: 380px) {
+    td.bar, th.bar { display: none; }
+    .gross-off td.gross, .gross-off th.gross { display: none; }
+  }
+`;
+
+class LocaltrackZoneTimeCard extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("localtrack-zone-time-card-editor");
+  }
+
+  /** Vorbelegung für den Kartenwähler: die KLEINSTE Zone, die nicht
+   *  `zone.home` ist. An `zone.home` sieht man der Karte nicht an, wofür sie
+   *  gebaut ist — dort ist fast jeder fast immer. */
+  static getStubConfig(hass) {
+    const states = hass?.states || {};
+    const entity = Object.keys(states).find((id) => id.startsWith("person."))
+      || Object.keys(states).find((id) => id.startsWith("device_tracker."))
+      || "";
+    let zone = "zone.home";
+    let best = Infinity;
+    for (const [id, state] of Object.entries(states)) {
+      if (!id.startsWith("zone.") || id === "zone.home") continue;
+      const radius = state.attributes?.radius;
+      if (radius == null || radius >= best) continue;
+      best = radius;
+      zone = id;
+    }
+    return { type: "custom:localtrack-zone-time-card", entity, zone };
+  }
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = null;
+    this._hass = null;
+    this._month = null;
+    this._result = null;
+    this._tracked = null;
+    this._loading = false;
+    this._pending = null;
+  }
+
+  setConfig(config) {
+    if (!config || !config.entity) {
+      throw new Error("localtrack-zone-time-card: 'entity' fehlt");
+    }
+    if (!config.zone) {
+      throw new Error("localtrack-zone-time-card: 'zone' fehlt");
+    }
+    this._config = { ...ZONE_TIME_DEFAULTS, ...config };
+    this._entity = this._config.entity;
+    this._zone = this._config.zone;
+    this._build();
+    if (this._hass) this._start();
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (!this._config) return;
+    // Absichtlich KEIN Neuladen bei jedem Zustandswechsel: Home Assistant
+    // ruft diesen Setter im Sekundentakt, ein Monat kostet aber eine echte
+    // Abfrage. Nachgeladen wird nur bei Monats-, Personen- oder Ortswechsel.
+    this._fillPickers();
+    if (first) this._start();
+  }
+
+  getCardSize() { return 8; }
+
+  connectedCallback() {
+    if (this._config && this._hass && !this._result) this._start();
+  }
+
+  _start() {
+    if (!this._month) {
+      const now = new Date();
+      this._month = { year: now.getFullYear(), month: now.getMonth() + 1 };
+    }
+    this._fillPickers();
+    this._load();
+  }
+
+  /* ── Aufbau ─────────────────────────────────────────────────────────── */
+
+  _build() {
+    this.shadowRoot.innerHTML = `
+      <style>${ZONE_TIME_STYLES}</style>
+      <ha-card>
+        <div class="head">
+          <div class="title"></div>
+          <div class="pickers">
+            <select class="pick-entity"></select>
+            <select class="pick-zone"></select>
+          </div>
+          <div class="month">
+            <button class="prev" title="Voriger Monat">‹</button>
+            <span class="label"></span>
+            <button class="next" title="Nächster Monat">›</button>
+          </div>
+        </div>
+        <div class="status"></div>
+        <table>
+          <thead>
+            <tr>
+              <th class="day">Tag</th>
+              <th class="net">netto</th>
+              <th class="gross">brutto</th>
+              <th class="bar"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+        <div class="note"></div>
+      </ha-card>
+    `;
+    const root = this.shadowRoot;
+    this._titleEl = root.querySelector(".title");
+    this._labelEl = root.querySelector(".month .label");
+    this._statusEl = root.querySelector(".status");
+    this._bodyEl = root.querySelector("tbody");
+    this._footEl = root.querySelector("tfoot");
+    this._noteEl = root.querySelector(".note");
+    this._entityEl = root.querySelector(".pick-entity");
+    this._zoneEl = root.querySelector(".pick-zone");
+    this._tableEl = root.querySelector("table");
+
+    root.querySelector(".prev").addEventListener("click", () => this._shiftMonth(-1));
+    root.querySelector(".next").addEventListener("click", () => this._shiftMonth(1));
+    this._entityEl.addEventListener("change", () => {
+      this._entity = this._entityEl.value;
+      this._load();
+    });
+    this._zoneEl.addEventListener("change", () => {
+      this._zone = this._zoneEl.value;
+      this._syncTitle();
+      this._load();
+    });
+    this._syncTitle();
+  }
+
+  _syncTitle() {
+    if (!this._titleEl || !this._config) return;
+    const zone = this._hass?.states?.[this._zone];
+    const name = zone?.attributes?.friendly_name || this._zone || "";
+    this._titleEl.textContent = this._config.title || name || "Verweildauer";
+  }
+
+  _shiftMonth(delta) {
+    let { year, month } = this._month;
+    month += delta;
+    if (month < 1) { month = 12; year -= 1; }
+    if (month > 12) { month = 1; year += 1; }
+    this._month = { year, month };
+    this._load();
+  }
+
+  /* ── Menüs ──────────────────────────────────────────────────────────── */
+
+  _zoneOptions() {
+    const states = this._hass?.states || {};
+    const zones = [];
+    for (const [id, state] of Object.entries(states)) {
+      if (!id.startsWith("zone.")) continue;
+      const a = state.attributes || {};
+      // Ohne Mittelpunkt und Radius lässt sich nichts rechnen — solche
+      // Einträge gehören nicht ins Menü, sonst wählt man ins Leere.
+      if (a.latitude == null || a.longitude == null || a.radius == null) continue;
+      zones.push({ id, name: a.friendly_name || id });
+    }
+    zones.sort((a, b) => a.name.localeCompare(b.name, "de"));
+    return zones;
+  }
+
+  _fillPickers() {
+    if (!this._hass || !this._entityEl) return;
+    // Personen kommen aus der Integration (`tracked`), nicht aus hass.states:
+    // in dieser Installation gibt es 369 device_tracker, von denen die
+    // allermeisten gar nicht aufgezeichnet werden.
+    const people = this._tracked && this._tracked.length
+      ? this._tracked
+      : [this._entity].filter(Boolean);
+    this._setOptions(this._entityEl, people.map((id) => ({
+      id,
+      name: this._hass.states?.[id]?.attributes?.friendly_name || id,
+    })), this._entity);
+    this._setOptions(this._zoneEl, this._zoneOptions(), this._zone);
+    this._syncTitle();
+  }
+
+  _setOptions(select, items, selected) {
+    const signature = items.map((i) => i.id).join("|") + "#" + selected;
+    if (select.dataset.signature === signature) return;   // nichts zu tun
+    select.dataset.signature = signature;
+    select.innerHTML = items
+      .map((i) => `<option value="${i.id}">${i.name}</option>`)
+      .join("");
+    if (selected) select.value = selected;
+  }
+
+  /* ── Laden ──────────────────────────────────────────────────────────── */
+
+  async _loadTracked() {
+    if (this._tracked) return;
+    try {
+      const stats = await this._hass.callWS({ type: "localtrack/stats" });
+      this._tracked = stats.tracked || [];
+    } catch (error) {
+      this._tracked = [];   // Menü fällt auf die konfigurierte Person zurück
+    }
+    this._fillPickers();
+  }
+
+  async _load() {
+    if (!this._hass || !this._config) return;
+    if (this._loading) { this._pending = true; return; }
+    this._loading = true;
+    const wanted = { ...this._month, entity: this._entity, zone: this._zone };
+    this._labelEl.textContent =
+      `${ZONE_TIME_MONTHS[this._month.month - 1]} ${this._month.year}`;
+    this._showStatus("Lade …");
+    try {
+      await this._loadTracked();
+      const zone = this._hass.states?.[this._zone];
+      if (!zone || zone.attributes?.latitude == null) {
+        this._showStatus(`Zone ${this._zone} hat keine Koordinaten.`);
+        this._bodyEl.innerHTML = "";
+        this._footEl.innerHTML = "";
+        return;
+      }
+      const range = monthRange(wanted.year, wanted.month);
+      const result = await this._hass.callWS({
+        type: "localtrack/zone_time",
+        entity_id: wanted.entity,
+        latitude: zone.attributes.latitude,
+        longitude: zone.attributes.longitude,
+        radius: zone.attributes.radius,
+        start: range.start,
+        end: range.end,
+        min_visit_s: Math.round((this._config.min_visit_minutes ?? 5) * 60),
+        max_gap_s: Math.round((this._config.max_gap_minutes ?? 15) * 60),
+      });
+      // Zwischenzeitlich umgeschaltet? Dann gehört diese Antwort nicht mehr
+      // auf den Bildschirm.
+      if (this._month.year !== wanted.year || this._month.month !== wanted.month
+          || this._entity !== wanted.entity || this._zone !== wanted.zone) {
+        return;
+      }
+      this._result = result;
+      this._render(range.days, wanted);
+      this._showStatus("");
+    } catch (error) {
+      this._showStatus(this._errorMessage(error));
+      this._bodyEl.innerHTML = "";
+      this._footEl.innerHTML = "";
+    } finally {
+      this._loading = false;
+      if (this._pending) { this._pending = false; this._load(); }
+    }
+  }
+
+  _errorMessage(error) {
+    const code = error?.code;
+    // Dieselbe Lehre wie bei der Timeline-Karte: `unknown_command` heißt, dass
+    // die Integration gar nicht eingerichtet ist — die Befehle werden in
+    // `async_setup_entry` registriert. Wer nur `not_found` abfängt,
+    // verschweigt den häufigsten Fall.
+    if (code === "unknown_command") {
+      return "Local Track v0.3.0 fehlt — Integration aktualisieren und Home Assistant neu starten.";
+    }
+    if (code === "not_found") {
+      return "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen.";
+    }
+    const detail = error?.message || code;
+    return detail
+      ? `Daten konnten nicht geladen werden: ${detail}`
+      : "Daten konnten nicht geladen werden.";
+  }
+
+  _showStatus(text) {
+    if (!this._statusEl) return;
+    this._statusEl.textContent = text;
+    this._statusEl.hidden = !text;
+  }
+
+  /* ── Darstellung ────────────────────────────────────────────────────── */
+
+  _render(daysInMonth, wanted) {
+    const byDate = new Map((this._result.days || []).map((d) => [d.date, d]));
+    const showGross = this._config.show_gross !== false;
+    this._tableEl.classList.toggle("gross-off", !showGross);
+
+    const pad = (n) => String(n).padStart(2, "0");
+    const today = new Date();
+    const isThisMonth = today.getFullYear() === wanted.year
+      && today.getMonth() + 1 === wanted.month;
+    const maxNet = Math.max(
+      1, ...(this._result.days || []).map((d) => d.net_s)
+    );
+
+    const rows = [];
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const key = `${wanted.year}-${pad(wanted.month)}-${pad(day)}`;
+      const entry = byDate.get(key);
+      const date = new Date(wanted.year, wanted.month - 1, day);
+      const weekday = ZONE_TIME_WEEKDAYS[date.getDay()];
+      const classes = [];
+      if (date.getDay() === 0 || date.getDay() === 6) classes.push("weekend");
+      if (!entry) classes.push("empty");
+      if (isThisMonth && today.getDate() === day) classes.push("today");
+      const width = entry ? Math.round((entry.net_s / maxNet) * 100) : 0;
+      rows.push(`
+        <tr class="${classes.join(" ")}">
+          <td class="day">${weekday}&nbsp;${pad(day)}.${pad(wanted.month)}.</td>
+          <td class="num net">${entry ? formatHoursMinutes(entry.net_s) : "—"}</td>
+          <td class="num gross">${entry ? formatHoursMinutes(entry.gross_s) : "—"}</td>
+          <td class="bar">${entry ? `<div class="fill" style="width:${width}%"></div>` : ""}</td>
+        </tr>`);
+    }
+    this._bodyEl.innerHTML = rows.join("");
+
+    const present = this._result.days_present || 0;
+    const average = present ? this._result.total_net_s / present : 0;
+    this._footEl.innerHTML = `
+      <tr>
+        <td class="day">Summe</td>
+        <td class="num net">${formatHoursMinutes(this._result.total_net_s)}</td>
+        <td class="num gross">${formatHoursMinutes(this._result.total_gross_s)}</td>
+        <td class="bar"></td>
+      </tr>
+      <tr>
+        <td class="day">Schnitt je Tag</td>
+        <td class="num net">${formatHoursMinutes(average)}</td>
+        <td class="num gross"></td>
+        <td class="bar"></td>
+      </tr>`;
+
+    const visits = this._result.total_visits || 0;
+    this._noteEl.textContent = present
+      ? `${present} von ${daysInMonth} Tagen anwesend, ${visits} Aufenthalte.`
+      : "In diesem Monat keine Anwesenheit erfasst.";
+  }
+}
+
+class LocaltrackZoneTimeCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.schema = ZONE_TIME_CARD_SCHEMA;
+      this._form.computeLabel = (schema) => ZONE_TIME_LABELS[schema.name] || schema.name;
+      this._form.addEventListener("value-changed", (event) => {
+        event.stopPropagation();
+        // Nur schreiben, was vom Standard abweicht. Sonst macht der Editor aus
+        // einer vierzeiligen Karte eine zehnzeilige, und wer später die
+        // Standardwerte ändert, erreicht die Bestandskarten nicht mehr.
+        const merged = { ...this._config, ...event.detail.value };
+        for (const [key, value] of Object.entries(ZONE_TIME_DEFAULTS)) {
+          if (merged[key] === value) delete merged[key];
+        }
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            detail: { config: merged },
+            bubbles: true,
+            composed: true,
+          })
+        );
+      });
+      this.appendChild(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.data = { ...ZONE_TIME_DEFAULTS, ...this._config };
+  }
+}
+
+customElements.define("localtrack-zone-time-card", LocaltrackZoneTimeCard);
+customElements.define("localtrack-zone-time-card-editor", LocaltrackZoneTimeCardEditor);
+
+window.customCards.push({
+  type: "localtrack-zone-time-card",
+  name: "Local Track Verweildauer",
+  description: "Wie lange eine Person an einem Ort war — ein Monat als Tagesliste.",
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });
