@@ -1,20 +1,25 @@
 # Local Track Cards
 
-**Der Tagesverlauf einer Person auf der Landkarte: Route, Aufenthalte und ein
-Zeit-Scrubber — Googles Zeitachse als Lovelace-Karte.**
+**Zwei Lovelace-Karten zu Local Track: der Tagesverlauf einer Person auf der
+Landkarte, und wie lange sie an einem Ort war — Monat für Monat.**
 
 ![Die Timeline-Karte: Route, nummerierte Aufenthalte, Scrubber und Segmentliste](docs/preview-timeline.png)
 
 | Karte | Wofür |
 | --- | --- |
 | `localtrack-timeline-card` | Tages-Track einer `person.*`- oder `device_tracker.*`-Entität |
+| `localtrack-zone-time-card` | Verweildauer an einem Ort, ein Monat als Tagesliste |
+
+Beide sind über *Karte hinzufügen* einrichtbar — mit Vorschau und grafischem
+Editor, ohne eine Zeile YAML.
 
 ## Voraussetzung
 
 Die Karte braucht die Integration
 [**Local Track**](https://github.com/luukkii123/ha-localtrack-integrations) —
-sie liefert das WebSocket-Kommando `localtrack/history`, über das die Karte
-ausschließlich liest. Die Karte spricht nie mit einem Dritten, außer für die
+sie liefert die WebSocket-Kommandos, über die die Karten ausschließlich lesen:
+`localtrack/history` für die Timeline-Karte, **`localtrack/zone_time` für die
+Verweildauer-Karte — das gibt es erst ab Integration `v0.3.0`**. Die Karte spricht nie mit einem Dritten, außer für die
 Kartenkacheln (siehe *Grenzen*).
 
 Ist die Integration installiert, aber kein Eintrag angelegt, meldet die Karte
@@ -160,6 +165,69 @@ sollte nicht Leaflet mitinstallieren müssen.
 **Wer die alte Karte auf einem Dashboard hat**, ändert `type:` von
 `custom:busch-timeline-card` auf `custom:localtrack-timeline-card`. Die
 Optionen sind unverändert.
+
+
+## Die Verweildauer-Karte
+
+`localtrack-zone-time-card` beantwortet „wie lange war ich diesen Monat bei der
+Arbeit". Person und Ort sind Ausklappmenüs, der Monat wird geblättert.
+
+```yaml
+type: custom:localtrack-zone-time-card
+entity: person.beispiel        # Anfangsauswahl, im Menü umschaltbar
+zone: zone.arbeit              # Anfangsauswahl, im Menü umschaltbar
+title: Verweildauer            # optional, sonst der Name der Zone
+min_visit_minutes: 5           # optional
+max_gap_minutes: 15            # optional
+show_gross: true               # optional
+```
+
+| Option | Standard | Wirkung |
+| --- | --- | --- |
+| `entity` | — | Pflicht. `person.*` oder `device_tracker.*` |
+| `zone` | — | Pflicht. Eine `zone.*` mit Mittelpunkt und Radius |
+| `title` | Name der Zone | Überschrift |
+| `min_visit_minutes` | 5 | Kürzere Aufenthalte zählen **gar nicht** |
+| `max_gap_minutes` | 15 | So viel wird von einer Datenlücke höchstens gutgeschrieben |
+| `show_gross` | `true` | Bruttospalte ein- oder ausblenden |
+
+**Die Menüs füllen sich selbst.** Personen kommen aus `localtrack/stats`, also
+aus dem, was die Integration *gerade* aufzeichnet — nicht aus allen Entitäten
+des Systems. Zonen kommen aus Home Assistant, aber nur die mit Mittelpunkt und
+Radius; ohne die lässt sich nichts rechnen.
+
+### netto und brutto
+
+| Spalte | Bedeutung |
+| --- | --- |
+| netto | Summe der Zeit tatsächlich am Ort |
+| brutto | erste Ankunft bis letzte Abfahrt desselben Tages |
+
+Die Differenz ist die Zeit außerhalb — Mittagspause, Botengang, oder ein
+Datenloch. Ist das Handy zwei Stunden aus, schreibt netto nur
+`max_gap_minutes` gut, statt zwei Stunden zu erfinden; brutto zeigt die Spanne
+trotzdem. **Lieber zu wenig als erfunden** ist die Regel, und die zweite Spalte
+macht die Lücke sichtbar, statt sie zu verstecken.
+
+**`min_visit_minutes` ist wichtiger, als es aussieht.** Eine Zone mit 19 m
+Radius ist kleiner als die übliche GPS-Streuung; ohne die Schwelle sammelt
+jede Vorbeifahrt Sekunden, und über einen Monat wird daraus eine sichtbare
+Zahl, die nichts bedeutet.
+
+**Auf schmalen Karten** (unter 380 px) entfällt der Balken; die Nettozahl
+bleibt, denn wegen der sieht man hin.
+
+### Grenzen
+
+- **Ein Ort je Karte.** Wer Arbeit und Schule nebeneinander will, legt zwei
+  Karten. Ein Vergleich zweier Orte in einer Ansicht ist nicht gebaut.
+- **Keine Besuchsliste je Tag.** Die Zeile bleibt eine Zeile; die einzelnen
+  Ankünfte zeigt die Timeline-Karte.
+- **Kein Sollzeit-Vergleich.** „Überstunden" bräuchte Feiertage, Urlaub und ein
+  Arbeitszeitmodell — das ist ein eigenes Thema, kein Feld in dieser Karte.
+- **Die Karte rechnet nicht selbst.** Alle Zahlen kommen aus
+  `localtrack/zone_time`; wer die Regeln nachlesen will, findet sie im README
+  der Integration.
 
 ## Lizenz
 
