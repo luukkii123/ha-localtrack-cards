@@ -13,13 +13,20 @@ Die Datei wird ueber einen eigenen HTTP-Server ausgeliefert und mit
 setzt das Dokument auf `about:blank`, und ein Modul von `http://` wird dort
 still nicht geladen (siehe hacs/CLAUDE.md).
 
-Auf diesem Server laeuft Playwright nur im Container:
+Seit 09.09.2026 misst derselbe Lauf zusaetzlich `docs/ui-regeln.md`, Regel 1
+und 4, ueber `regeln.py`: `lauf_breiten` + `messe_text` bei 320, 480 und 960 px
+in hellem und dunklem Thema, davor `selbsttest` als Falsifikation der Messung.
 
-    docker run --rm -v "$PWD:/repo" \
+Auf diesem Server laeuft Playwright nur im Container. Der Aufruf braucht
+**beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
+
+    docker run --rm \
+      -v "/mnt/user/Data/Claude Projekte/hacs/docs/render:/work" \
+      -v "/mnt/user/Data/Claude Projekte/hacs/ha-localtrack-cards:/cards" \
       --entrypoint bash mcr.microsoft.com/playwright/python:v1.62.0-noble \
       -c 'pip install --quiet --break-system-packages playwright==1.62.0 >/dev/null; \
-          python3 /repo/docs/render/zonetime.py /repo/dist/localtrack-cards.js \
-                  /repo/docs/render/zonetime-ergebnis'
+          python3 /cards/docs/render/zonetime.py /cards/dist/localtrack-cards.js \
+                  /cards/docs/render/zonetime-ergebnis'
 """
 import json
 import pathlib
@@ -29,6 +36,14 @@ import sys
 import time
 
 from playwright.sync_api import sync_playwright
+
+# `/work` ist der Mount von hacs/docs/render im Container; der zweite Pfad
+# findet dasselbe Modul ausserhalb des Containers.
+for _kandidat in ("/work",
+                  str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
+    if _kandidat not in sys.path:
+        sys.path.append(_kandidat)
+from regeln import bewerte, lauf_breiten, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -52,12 +67,26 @@ PAGE = """<!doctype html>
   body { margin: 0; padding: 16px; background: #f2f4f7; font-family: Roboto, sans-serif;
          color: var(--primary-text-color); }
   #wrap { max-width: __MAXW__px; margin: 0 auto; }
-  ha-card { display: block; background: #fff; border-radius: 12px; padding: 16px;
-            box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 </style>
 <div id="wrap"></div>
 <script>
-  class HaCard extends HTMLElement {}
+  /* ha-card MUSS einen eigenen Shadow-Root mit :host-Stil mitbringen: die
+     Karte rendert ihre ha-card INNERHALB ihres eigenen Shadow-Roots, und
+     Dokument-CSS erreicht sie dort nicht — die Regel `ha-card { display:block }`
+     im <style> oben blieb wirkungslos, die ha-card war `display: inline`.
+     Fuer messe_text ist das nicht kosmetisch: die ha-card ist das
+     Bezugsrechteck von Regel 1, Pruefung 2. */
+  class HaCard extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>:host{display:block;box-sizing:border-box;' +
+        'background:var(--ha-card-background,var(--card-background-color,#fff));' +
+        'border-radius:var(--ha-card-border-radius,12px);' +
+        'box-shadow:0 2px 6px rgba(0,0,0,.15);' +
+        'color:var(--primary-text-color);}</style><slot></slot>';
+    }
+  }
   customElements.define('ha-card', HaCard);
   class HaIcon extends HTMLElement {}
   customElements.define('ha-icon', HaIcon);
@@ -73,6 +102,7 @@ PAGE = """<!doctype html>
     set data(v) { this._data = v; window.__formData = v; }
     get data() { return this._data; }
     set computeLabel(fn) { this._label = fn; window.__formLabel = fn; }
+    set computeHelper(fn) { this._helper = fn; window.__formHelper = fn; }
     fire(patch) {
       this.dispatchEvent(new CustomEvent('value-changed', {
         detail: { value: { ...this._data, ...patch } },
@@ -225,6 +255,9 @@ with sync_playwright() as pw:
           tag: el.tagName.toLowerCase(),
           felder: (window.__formSchema || []).map((s) => s.name),
           beschriftungen: (window.__formSchema || []).map((s) => window.__formLabel(s)),
+          /* Regel 3: jedes Feld braucht auch einen Helper. Gemessen wird der
+             tatsaechlich gelieferte Text, nicht die Existenz der Funktion. */
+          hilfetexte: (window.__formSchema || []).map((s) => window.__formHelper(s)),
           daten: window.__formData,
         };
         let geliefert = null;
@@ -236,7 +269,93 @@ with sync_playwright() as pw:
         out.nachAenderung = geliefert;
         return out;
     }""")
+
+    # Zweiter Editor mit englischer Locale: Regel 3 verlangt beide Sprachen,
+    # und „es gibt ein Woerterbuch" ist kein Beleg dafuer, dass die Karte auch
+    # danach greift. Gemessen wird der ausgelieferte Text, nicht die Absicht.
+    editor_en = page.evaluate("""() => {
+        const el = window.__card.constructor.getConfigElement();
+        document.body.appendChild(el);
+        el.setConfig({ type: 'custom:localtrack-zone-time-card',
+                       entity: 'person.lukas', zone: 'zone.lukas_arbeit' });
+        el.hass = { ...window.__hass, locale: { language: 'en' } };
+        return {
+          beschriftungen: (window.__formSchema || []).map((s) => window.__formLabel(s)),
+          hilfetexte: (window.__formSchema || []).map((s) => window.__formHelper(s)),
+        };
+    }""")
     page.screenshot(path=str(OUT / "breit.png"), full_page=True)
+
+    # ── Regel 1 und 4: 320/480/960 px, hell und dunkel ─────────────────────
+    def voll_breit(p):
+        """Karte auf die volle Ansichtsfensterbreite bringen. Der Editor aus
+        der Messung davor haengt noch am body und wuerde sonst mitscrollen."""
+        p.evaluate("""() => {
+            document.body.style.padding = '0';
+            const wrap = document.getElementById('wrap');
+            wrap.style.maxWidth = 'none';
+            wrap.style.width = '100%';
+            for (const el of document.querySelectorAll('localtrack-zone-time-card-editor'))
+              el.remove();
+        }""")
+
+    # ── table-layout: fixed beweisen, nicht behaupten ──────────────────────
+    # `gekuerzt: 0` unten belegt nur, dass nichts zu lang WAR — nicht, dass
+    # eine zu lange Zelle gekuerzt WUERDE. Ohne table-layout: fixed richtet
+    # sich die Spalte nach dem laengsten Inhalt, die Tabelle waechst, und
+    # `text-overflow` bekommt nie eine Kante. Also: eine Zelle absichtlich
+    # ueberfuellen und messen, ob Spalte und Tabelle ihre Breite behalten.
+    page.set_viewport_size({"width": 320, "height": 1400})
+    voll_breit(page)
+    page.wait_for_timeout(400)
+    zelle = page.evaluate("""() => {
+        const sr = window.__card.shadowRoot;
+        const tab = sr.querySelector('table');
+        const td = sr.querySelector('tbody td.day');
+        const alt = td.textContent;
+        const vorher = { tabelle: tab.getBoundingClientRect().width,
+                         zelle: td.getBoundingClientRect().width };
+        td.textContent = 'Donnerstag der siebenundzwanzigste September zweitausendsechsundzwanzig';
+        const st = getComputedStyle(td);
+        const out = {
+          tableLayout: getComputedStyle(tab).tableLayout,
+          textOverflow: st.textOverflow,
+          overflowX: st.overflowX,
+          vorher,
+          nachher: { tabelle: tab.getBoundingClientRect().width,
+                     zelle: td.getBoundingClientRect().width },
+          scrollWidth: td.scrollWidth,
+          clientWidth: td.clientWidth,
+        };
+        td.textContent = alt;
+        return out;
+    }""")
+    page.wait_for_timeout(200)
+
+    page.set_viewport_size({"width": 480, "height": 1400})
+    voll_breit(page)
+    page.wait_for_timeout(400)
+    regel1_selbsttest = selbsttest(page, "localtrack-zone-time-card")
+    regel1 = lauf_breiten(
+        page,
+        messung=lambda p: messe_text(p, "localtrack-zone-time-card"),
+        vor_messung=voll_breit,
+        hoehe=1600,
+    )
+
+    # ── Regel 4: je ein Bild pro Thema bei 320 px ──────────────────────────
+    # Zahlen belegen Lage und Groesse, nicht Lesbarkeit. Schrift in
+    # Hintergrundfarbe faellt in keiner Messung auf.
+    bilder = []
+
+    def bild(p):
+        thema = p.evaluate("() => document.documentElement.dataset.theme")
+        name = "zonetime-320-%s.png" % thema
+        p.locator("localtrack-zone-time-card").screenshot(path=str(OUT / name))
+        bilder.append(name)
+        return {"bild": name}
+
+    lauf_breiten(page, breiten=(320,), messung=bild, vor_messung=voll_breit, hoehe=1600)
     page.close()
 
     # ── schmal ─────────────────────────────────────────────────────────────
@@ -311,16 +430,61 @@ checks["Editor schreibt Abweichungen schon"] = (
 checks["keine Konsolenfehler"] = console == []
 checks["keine Seitenfehler"] = errors == []
 
+# ── Regel 3: Editor mit Label UND Helper, in beiden Sprachen ───────────────
+checks["Editor liefert zu jedem Feld einen Helper"] = (
+    len(editor["hilfetexte"]) == len(editor["felder"])
+    and all(bool(h) and h.strip().endswith(".") for h in editor["hilfetexte"])
+)
+checks["Editor beschriftet englisch bei englischer Locale"] = (
+    editor_en["beschriftungen"][0] == "Person or device"
+)
+checks["Editor hilft englisch bei englischer Locale"] = (
+    editor_en["hilfetexte"][0].startswith("The person or device")
+)
+
+# ── Regel 1 und 4 ─────────────────────────────────────────────────────────
+zahlen = zaehle(regel1)
+checks["Selbsttest: Ueberlauf wird erkannt"] = regel1_selbsttest["ueberlauf_erkannt"]
+checks["Selbsttest: ausserhalb wird erkannt"] = regel1_selbsttest["ausserhalb_erkannt"]
+checks["Selbsttest: gewollte Kuerzung gilt nicht als Ueberlauf"] = (
+    regel1_selbsttest["ellipsis_nicht_gemeldet"]
+)
+checks["Regel 1: kein Ueberlauf"] = zahlen["ueberlauf"] == 0
+checks["Regel 1: nichts ausserhalb der Karte"] = zahlen["ausserhalb"] == 0
+checks["Regel 1: keine Ueberlappung"] = zahlen["ueberlappung"] == 0
+checks["Regel 1: sechs Laeufe (3 Breiten x 2 Themen)"] = len(regel1["laeufe"]) == 6
+checks["Tabelle hat table-layout: fixed"] = zelle["tableLayout"] == "fixed"
+checks["Zelle kuerzt mit ellipsis"] = zelle["textOverflow"].startswith("ellipsis")
+checks["ueberlange Zelle waechst nicht"] = (
+    abs(zelle["nachher"]["zelle"] - zelle["vorher"]["zelle"]) < 1
+)
+checks["ueberlange Zelle sprengt die Tabelle nicht"] = (
+    abs(zelle["nachher"]["tabelle"] - zelle["vorher"]["tabelle"]) < 1
+)
+checks["ueberlanger Text wird wirklich abgeschnitten"] = (
+    zelle["scrollWidth"] > zelle["clientWidth"]
+)
+checks["Regel 1: in jedem Lauf wurde etwas gemessen"] = all(
+    l["messung"].get("geprueft", 0) > 0 for l in regel1["laeufe"]
+)
+
 report = {
     "breit": wide,
     "schmal": {k: narrow[k] for k in ("zeilen", "erste", "bruttoSichtbar", "balkenSichtbar")},
     "editor": editor,
+    "editor_en": editor_en,
+    "regel1": regel1,
+    "regel1_tabellenzelle": zelle,
+    "regel1_selbsttest": regel1_selbsttest,
+    "regel1_zaehlung": zahlen,
+    "regel4_bilder": bilder,
     "console_errors": console,
     "page_errors": errors,
     "pruefungen": checks,
     "bestanden": all(checks.values()),
     "gescheitert": [k for k, v in checks.items() if not v],
 }
+report["bestanden"] = report["bestanden"] and bewerte(report) == 0
 (OUT / "report.json").write_text(
     json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
 )

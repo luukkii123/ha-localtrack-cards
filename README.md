@@ -29,8 +29,11 @@ Verweildauer-Karte — das gibt es erst ab Integration `v0.3.0`**. Die Karte spr
 Kartenkacheln (siehe *Grenzen*).
 
 Ist die Integration installiert, aber kein Eintrag angelegt, meldet die Karte
-„Local-Track-Integration nicht eingerichtet."; geht die Abfrage aus einem
-anderen Grund schief, „Daten konnten nicht geladen werden."
+„Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste →
+Integration hinzufügen → Local Track."; geht die Abfrage aus einem anderen
+Grund schief, „Daten konnten nicht geladen werden: …". **Beide Karten sprechen
+Deutsch und Englisch**, nach `hass.locale.language`; in der Kartenauswahl
+entscheidet `navigator.language`.
 
 Warum zwei Repos: In HACS gehört ein Repository zu **genau einer** Kategorie.
 Karten und Integrationen lassen sich deshalb nicht zusammen ausliefern.
@@ -54,7 +57,7 @@ Voraussetzung: Home Assistant **2024.11.0** oder neuer.
 ```yaml
 type: custom:localtrack-timeline-card
 entity: person.beispiel
-title: Mein Tag         # optional, sonst die Entitäts-ID
+title: Mein Tag         # optional, sonst der Name der Person
 height: 320             # Kartenhöhe in px
 stay_radius_m: 150      # Radius, in dem Punkte als „Aufenthalt" gelten
 min_stay_minutes: 10    # Mindestdauer eines Aufenthalts
@@ -69,7 +72,7 @@ tile_url: ""            # leer = OpenStreetMap, sonst eigener Kachelserver
 | Option | Pflicht | Standard | Bedeutung |
 | --- | --- | --- | --- |
 | `entity` | ja | — | eine `person.*`- oder `device_tracker.*`-Entität |
-| `title` | nein | Entitäts-ID | Überschrift der Karte |
+| `title` | nein | Name der Person | Überschrift der Karte; ohne `title` der `friendly_name`, sonst die Entitäts-ID |
 | `height` | nein | `320` | Kartenhöhe in px (Editor: 240–720) |
 | `stay_radius_m` | nein | `150` | bis zu diesem Abstand vom laufenden Mittelpunkt zählen Punkte als ein Aufenthalt (Editor: 10–1000) |
 | `min_stay_minutes` | nein | `10` | so lange muss ein Aufenthalt gedauert haben, um zu zählen (Editor: 1–240) |
@@ -118,6 +121,10 @@ Auf schmalen Spalten rückt die Karte zusammen, die Segmentliste bleibt lesbar:
   Genauigkeit" in der App (kostet Akku) liefert dichtere Spuren.
 - **Ein Tag auf einmal.** Es gibt keine Wochen- oder Monatsansicht und keinen
   Vergleich mehrerer Personen in einer Karte.
+- **Zwei Aufenthalte am selben Ort stapeln ihre Nadeln.** Wer morgens und
+  abends zu Hause ist, sieht dort nur die spätere Nummer — die frühere liegt
+  exakt darunter. Im Bild oben fehlt deshalb die 1. Die Liste unter der Karte
+  zeigt beide.
 - Liegen mehr Punkte vor als `max_points`, reduziert die **Integration** sie mit
   Douglas-Peucker, bevor die Karte sie sieht.
 - Das Datumsfeld zeigt in den Bildern oben `08/24/2026` statt `24.08.2026`. Das
@@ -143,12 +150,17 @@ Das Bild oben stammt aus `docs/render/render.py`: Die ausgelieferte Datei wird
 in echtem Chromium gerendert, `ha-card`/`ha-icon`/`ha-form` sind Attrappen, und
 `callWS` beantwortet `localtrack/history` mit einem erfundenen Tagesverlauf.
 
+Der Aufruf braucht **beide** Mounts: `/work` ist `hacs/docs/render` (dort liegt
+das Messmodul `regeln.py`), `/cards` ist dieses Repo.
+
 ```bash
-docker run --rm -v "$PWD:/repo" \
+docker run --rm \
+  -v "/mnt/user/Data/Claude Projekte/hacs/docs/render:/work" \
+  -v "/mnt/user/Data/Claude Projekte/hacs/ha-localtrack-cards:/cards" \
   --entrypoint bash mcr.microsoft.com/playwright/python:v1.62.0-noble \
   -c 'pip install --quiet --break-system-packages playwright==1.62.0 >/dev/null; \
-      python3 /repo/docs/render/render.py /repo/dist/localtrack-cards.js \
-              /repo/docs/render/ergebnis 620'
+      python3 /cards/docs/render/render.py /cards/dist/localtrack-cards.js \
+              /cards/docs/render/ergebnis 620'
 ```
 
 Der Lauf protokolliert **jede** Netzanfrage nach `report.json`. Bei 620 px
@@ -157,6 +169,42 @@ Fehlerlisten (`vendor_requests`, `bad_responses`, `request_failures`,
 `console_errors`, `page_errors`) leer. Marker und Schatten kamen als
 `data:`-URIs an (50×82 bzw. 41×41 px), es gab **keinen** Versuch, aus einem
 Unterordner nachzuladen.
+
+### UI-Regeln — Stand 09.09.2026, `CARD_VERSION` 0.4.0
+
+Gemessen gegen [`docs/ui-regeln.md`](https://github.com/luukkii123/hacs) im
+Sammelordner, alle vier Regeln, beide Karten. **Alles grün, Exit 0.**
+
+| Beleg | Umfang | Ergebnis |
+| --- | --- | --- |
+| `python3 scripts/ui-regeln-pruefen.py --repo ha-localtrack-cards` | statisch, Regel 3 und 4 | 0 Verstöße (vorher 18) |
+| `docs/render/render.py` (Timeline) | 30 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel, zusätzlich derselbe Satz im Fehlerzustand | 138 + 108 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
+| `docs/render/zonetime.py` (Verweildauer) | 50 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel | 636 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
+| `docs/render/zindex.py` | Stapelkontext gegen die Dialogschicht | unverändert grün |
+
+Was dabei **nicht** nur behauptet, sondern gemessen wurde:
+
+- **Regel 1:** Vor jeder Messung läuft `selbsttest` — zwei Sonden, eine
+  fehlerhafte und eine korrekt gekürzte. Ohne die erste wäre ein Lauf mit null
+  Verstößen wertlos, ohne die zweite gälte jede gewollte Kürzung als Fehler.
+  Beide schlugen richtig an.
+- **Regel 1, Tabelle:** `table-layout: fixed` ist gemessen, nicht angenommen.
+  Eine absichtlich überfüllte Zelle bleibt bei 163 px, die Tabelle bei 288 px,
+  und der Inhalt wird bei `scrollWidth` 524 gegen `clientWidth` 163 gekürzt.
+- **Regel 2:** Die Karten haben **keine** Popups — auch das ist ein Messwert.
+  Nach 14 ausgelösten Klicks auf Segmentzeilen, Aufenthaltsnadeln, Route und
+  Landkarte gab es 0 Leaflet-Popups, 0 Tooltips, 0 Dialoge, die Popup-Ebene
+  blieb leer, `location.href` und `history.length` unverändert.
+- **Regel 3:** Der ausgelieferte Text ist geprüft, nicht das Vorhandensein der
+  Funktionen: alle 9 bzw. 6 Schemafelder liefern Label **und** Helper in
+  deutsch **und** englisch, die Sprachen unterscheiden sich, jeder Helper endet
+  auf einen Punkt, kein Label tut es.
+- **Regel 4:** Beide Karten rendern in `<ha-card>` mit `var(--ha-space-4)`, und
+  jede Messung lief in beiden Themen.
+
+**Nicht belegt:** Der Editor ist gegen eine `ha-form`-**Attrappe** gemessen.
+Dass Home Assistants echtes `ha-form` diese Selektoren so darstellt und den
+Helper anzeigt, entscheidet erst der Live-Test.
 
 ## Herkunft
 
@@ -184,7 +232,7 @@ entity: person.beispiel        # Anfangsauswahl, im Menü umschaltbar
 zone: zone.arbeit              # Anfangsauswahl, im Menü umschaltbar
 title: Verweildauer            # optional, sonst der Name der Zone
 min_visit_minutes: 5           # optional
-max_gap_minutes: 15            # optional
+max_gap_minutes: 30            # optional
 show_gross: true               # optional
 ```
 

@@ -68,7 +68,34 @@ const LEAFLET_CSS = "/* required styles */\n\n.leaflet-pane,\n.leaflet-tile,\n.l
  * Plan).
  * ──────────────────────────────────────────────────────────────────────────── */
 
-const TIMELINE_CARD_SCHEMA = [
+/* ── Sprache — beide Karten teilen sich diese zwei Helfer ────────────────────
+ *
+ * `docs/ui-regeln.md`, Regel 3: In der Karte und im Editor entscheidet
+ * `hass.locale.language`. Der `window.customCards`-Eintrag entsteht dagegen
+ * beim Laden der Datei, lange bevor `hass` existiert — dort ist
+ * `navigator.language` die einzige Quelle, die es zu diesem Zeitpunkt gibt.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Language for card and editor: "de" when `hass.locale.language` starts with
+ *  "de", "en" otherwise. */
+function cardLanguage(hass) {
+  const code = (hass && hass.locale && hass.locale.language) || "";
+  return String(code).toLowerCase().startsWith("de") ? "de" : "en";
+}
+
+/** Language for `window.customCards` — resolved once, from navigator.language. */
+const BROWSER_LANG =
+  String((typeof navigator !== "undefined" && navigator.language) || "en")
+    .toLowerCase().startsWith("de") ? "de" : "en";
+
+/** Fill `{name}` placeholders of a dictionary entry. */
+function fillText(template, values) {
+  return String(template).replace(/\{(\w+)\}/g, (_, key) =>
+    (values && values[key] !== undefined && values[key] !== null ? String(values[key]) : "")
+  );
+}
+
+const SCHEMA_LOCALTRACK_TIMELINE_CARD = [
   {
     name: "entity",
     required: true,
@@ -96,16 +123,99 @@ const TIMELINE_CARD_SCHEMA = [
   { name: "tile_url", selector: { text: {} } },
 ];
 
-const TIMELINE_LABELS = {
-  entity: "Entität",
-  title: "Titel",
-  height: "Kartenhöhe",
-  stay_radius_m: "Aufenthalts-Radius",
-  min_stay_minutes: "Mindest-Aufenthalt",
-  show_scrubber: "Zeit-Scrubber",
-  reverse_geocode: "Ortsnamen abfragen (OSM)",
-  max_points: "Max. Punkte pro Tag",
-  tile_url: "Kachel-URL (leer = OpenStreetMap)",
+/* Wörterbuch in der Form aus `scripts/ui-regeln-pruefen.py`, Kopf: beide
+   Sprachen, je `labels` und `helpers` für JEDES Schemafeld, dazu `name` und
+   `description` für den customCards-Eintrag. `texte` ist der einzige erlaubte
+   Ort für nutzersichtbaren Text außerhalb von Label und Helper. */
+const TEXTE_LOCALTRACK_TIMELINE_CARD = {
+  de: {
+    name: "Local Track Timeline",
+    description: "Tagesweg einer Person auf der Landkarte, mit Aufenthalten und Zeitregler.",
+    labels: {
+      entity: "Person oder Gerät",
+      title: "Titel",
+      height: "Kartenhöhe",
+      stay_radius_m: "Aufenthaltsradius",
+      min_stay_minutes: "Mindestaufenthalt",
+      show_scrubber: "Zeitregler",
+      reverse_geocode: "Ortsnamen abfragen",
+      max_points: "Punkte je Tag",
+      tile_url: "Kachelquelle",
+    },
+    helpers: {
+      entity: "Die Person oder das Gerät, deren Tagesweg die Karte zeichnet. Ohne sie bleibt die Karte leer.",
+      title: "Überschrift der Karte. Vorgabe: der Name der Person.",
+      height: "Höhe der Landkarte in Pixeln. Vorgabe 320.",
+      stay_radius_m: "Meter, innerhalb derer aufeinanderfolgende Punkte als derselbe Ort gelten. Vorgabe 150.",
+      min_stay_minutes: "Minuten, ab denen ein Halt als Aufenthalt zählt. Kürzere Halte gehören zur Strecke. Vorgabe 10.",
+      show_scrubber: "Zeigt unter der Landkarte einen Schieber, der den Tag abfährt. Vorgabe an.",
+      reverse_geocode: "Fragt Straßennamen bei OpenStreetMap ab. Braucht Internet. Vorgabe aus.",
+      max_points: "Höchstzahl der Punkte, die ein Tag lädt. Weniger Punkte zeichnen schneller. Vorgabe 2000.",
+      tile_url: "Adresse des Kartenmaterials. Leer nimmt OpenStreetMap. Vorgabe leer.",
+    },
+    texte: {
+      laden: "Lade …",
+      keine_punkte: "Keine Punkte an diesem Tag.",
+      nicht_eingerichtet: "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen → Local Track.",
+      keine_berechtigung: "Keine Berechtigung für Local Track.",
+      ladefehler: "Daten konnten nicht geladen werden.",
+      ladefehler_grund: "Daten konnten nicht geladen werden: {grund}",
+      aufenthalt: "Aufenthalt",
+      strecke: "Strecke",
+      unterwegs: "unterwegs",
+      tag_waehlen: "Tag wählen",
+      zeitpunkt: "Zeitpunkt am Tag",
+      dauer_hm: "{h} h {min} min",
+      dauer_m: "{min} min",
+      km: "{wert} km",
+      fehlt_entity: "localtrack-timeline-card: 'entity' fehlt",
+      falsche_entity: "localtrack-timeline-card: 'entity' muss ein person.* oder device_tracker.* sein",
+    },
+  },
+  en: {
+    name: "Local Track timeline",
+    description: "One person's day on a map, with stays and a time slider.",
+    labels: {
+      entity: "Person or device",
+      title: "Title",
+      height: "Map height",
+      stay_radius_m: "Stay radius",
+      min_stay_minutes: "Minimum stay",
+      show_scrubber: "Time slider",
+      reverse_geocode: "Look up place names",
+      max_points: "Points per day",
+      tile_url: "Tile source",
+    },
+    helpers: {
+      entity: "The person or device whose day the card draws. Without it the card stays empty.",
+      title: "Heading of the card. Default: the name of the person.",
+      height: "Height of the map in pixels. Default 320.",
+      stay_radius_m: "Metres within which consecutive points count as the same place. Default 150.",
+      min_stay_minutes: "Minutes after which a stop counts as a stay. Shorter stops belong to the trip. Default 10.",
+      show_scrubber: "Shows a slider below the map that walks through the day. Default on.",
+      reverse_geocode: "Looks up street names at OpenStreetMap. Needs internet. Default off.",
+      max_points: "Largest number of points one day loads. Fewer points draw faster. Default 2000.",
+      tile_url: "Address of the map tiles. Empty uses OpenStreetMap. Default empty.",
+    },
+    texte: {
+      laden: "Loading …",
+      keine_punkte: "No points on this day.",
+      nicht_eingerichtet: "Local Track is not set up — Settings → Devices & services → Add integration → Local Track.",
+      keine_berechtigung: "No permission for Local Track.",
+      ladefehler: "Could not load the data.",
+      ladefehler_grund: "Could not load the data: {grund}",
+      aufenthalt: "Stay",
+      strecke: "Trip",
+      unterwegs: "on the move",
+      tag_waehlen: "Pick a day",
+      zeitpunkt: "Time of day",
+      dauer_hm: "{h} h {min} min",
+      dauer_m: "{min} min",
+      km: "{wert} km",
+      fehlt_entity: "localtrack-timeline-card: 'entity' is missing",
+      falsche_entity: "localtrack-timeline-card: 'entity' must be a person.* or device_tracker.*",
+    },
+  },
 };
 
 /* ── Leaflet: eingebettet bereitstellen, CSS idempotent injizieren ───────── */
@@ -161,12 +271,14 @@ function formatClock(date, locale) {
   }
 }
 
-function formatDuration(seconds) {
+/** `texte` is the `texte` section of TEXTE_LOCALTRACK_TIMELINE_CARD for the
+ *  active language — no user-visible text lives in this function. */
+function formatDuration(seconds, texte) {
   const total = Math.round(seconds);
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
-  if (hours > 0) return `${hours} h ${minutes} min`;
-  return `${minutes} min`;
+  if (hours > 0) return fillText(texte.dauer_hm, { h: hours, min: minutes });
+  return fillText(texte.dauer_m, { min: minutes });
 }
 
 /* ── Stay/Move-Clustering ───────────────────────────────────────────────── */
@@ -385,13 +497,20 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._dayStarts = new Map();
   }
 
+  /** Dictionary section for the active language. `setConfig` may run before
+   *  `hass` arrives — then the browser language decides, same as customCards. */
+  get _t() {
+    const sprache = this._hass ? cardLanguage(this._hass) : BROWSER_LANG;
+    return TEXTE_LOCALTRACK_TIMELINE_CARD[sprache].texte;
+  }
+
   setConfig(config) {
     if (!config || !config.entity) {
-      throw new Error("localtrack-timeline-card: 'entity' fehlt");
+      throw new Error(this._t.fehlt_entity);
     }
     const domain = String(config.entity).split(".")[0];
     if (domain !== "person" && domain !== "device_tracker") {
-      throw new Error("localtrack-timeline-card: 'entity' muss ein person.* oder device_tracker.* sein");
+      throw new Error(this._t.falsche_entity);
     }
     this._config = {
       height: 320,
@@ -475,53 +594,108 @@ class LocaltrackTimelineCard extends HTMLElement {
            card as a whole stacks at 0 and every overlay wins.
            No backticks in this comment — they would end the template literal. */
         :host { display: block; position: relative; z-index: 0; }
-        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        .title { font-size: 1.1em; font-weight: 600; }
-        .controls { display: flex; gap: 8px; align-items: center; }
-        .controls input[type="date"] { font-size: 0.9em; }
-        .map-wrap { position: relative; border-radius: 8px; overflow: hidden; }
-        .map { width: 100%; height: 320px; background: #dde5ec; }
+        /* Regel 4: die Karte rendert in ha-card, Innenabstand var(--ha-space-4)
+           wie HAs eigener .card-content. ha-card ist hier ein Kind dieses
+           Shadow-Roots, deshalb darf und muss der Abstand von aussen kommen. */
+        ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
+        .header {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: var(--ha-space-2, 8px); margin-bottom: var(--ha-space-2, 8px);
+        }
+        /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. min-width: 0
+           ist im Flex-Kind Pflicht, sonst waechst es ueber den Elternteil. */
+        .title {
+          font-size: var(--ha-font-size-l, 1.1em); font-weight: var(--ha-font-weight-medium, 600);
+          color: var(--primary-text-color);
+          flex: 1 1 auto; min-width: 0;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .controls { display: flex; gap: var(--ha-space-2, 8px); align-items: center; flex: 0 0 auto; }
+        .controls input[type="date"] {
+          font: inherit; font-size: var(--ha-font-size-s, 0.9em); max-width: 100%;
+          color: var(--primary-text-color); background: var(--card-background-color, #fff);
+          border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px; padding: 2px 4px;
+        }
+        .map-wrap { position: relative; border-radius: var(--ha-card-border-radius, 8px); overflow: hidden; }
+        .map { width: 100%; height: 320px; background: var(--secondary-background-color, #dde5ec); }
+        /* Lade- und Fehlerbox INNERHALB der Karte, kein Popup: kein
+           Schliessknopf, kein Verlaufseintrag, sie ersetzt die Karte nicht.
+           Der Container hat overflow: hidden und sein Mass haengt nicht am
+           Text (inset: 0) — beides verlangt Regel 1 fuer absolute Elemente. */
         .map-overlay {
           position: absolute; inset: 0; display: flex; align-items: center;
-          justify-content: center; background: rgba(0,0,0,0.04); z-index: 1000;
-          font-size: 0.9em; color: #555;
+          justify-content: center; text-align: center; overflow: hidden;
+          padding: var(--ha-space-4, 16px); box-sizing: border-box;
+          background: var(--card-background-color, #fff); z-index: 1100;
+          font-size: var(--ha-font-size-s, 0.9em); color: var(--secondary-text-color, #555);
+          overflow-wrap: anywhere;
         }
-        .scrubber { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-        .scrubber input[type="range"] { flex: 1; }
-        .scrubber .scrub-label { min-width: 9em; text-align: right; font-size: 0.85em; }
-        .segments { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+        /* Solange die Box steht, hat Leaflets Bedienung nichts zu suchen: die
+           Box ist deckend, Zoomknoepfe und Quellenhinweis wuerden sonst unter
+           ihrem Text durchscheinen — und lagen in der Messung genau dort
+           (Regel 1, Pruefung 3: zwei Textelemente duerfen sich nicht
+           schneiden). Gemessen gefunden, nicht vermutet. */
+        .map-wrap.busy .leaflet-control-container { visibility: hidden; }
+        .scrubber {
+          display: flex; gap: var(--ha-space-2, 8px); align-items: center;
+          margin-top: var(--ha-space-2, 8px);
+        }
+        .scrubber input[type="range"] { flex: 1 1 auto; min-width: 0; }
+        .scrubber .scrub-label {
+          flex: 0 1 auto; min-width: 0; max-width: 60%; text-align: right;
+          font-size: var(--ha-font-size-s, 0.85em); color: var(--secondary-text-color);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .segments {
+          margin-top: var(--ha-space-2, 8px); display: flex; flex-direction: column;
+          gap: var(--ha-space-1, 4px);
+        }
         .segment {
-          display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-          border-radius: 6px; cursor: pointer; background: rgba(0,0,0,0.03);
+          display: flex; align-items: center; gap: var(--ha-space-2, 8px);
+          padding: 6px var(--ha-space-2, 8px); border-radius: 6px; cursor: pointer;
+          background: var(--secondary-background-color, #f1f1f1); min-width: 0;
         }
-        .segment:hover { background: rgba(0,0,0,0.06); }
+        .segment:hover { background: var(--divider-color, #e0e0e0); }
         .segment .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
-        .segment.stay .dot { background: #4caf50; }
-        .segment.move .dot { background: #03a9f4; }
-        .segment .times { font-weight: 600; white-space: nowrap; }
-        .segment .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .segment .meta { color: #777; font-size: 0.85em; white-space: nowrap; }
+        .segment.stay .dot { background: var(--success-color, #4caf50); }
+        .segment.move .dot { background: var(--primary-color, #03a9f4); }
+        .segment .times {
+          font-weight: var(--ha-font-weight-medium, 600); flex: 0 1 auto; min-width: 0;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .segment .label {
+          flex: 1 1 auto; min-width: 0; color: var(--primary-text-color);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .segment .meta {
+          color: var(--secondary-text-color, #777); font-size: var(--ha-font-size-s, 0.85em);
+          flex: 0 1 auto; min-width: 0;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
       </style>
-      <div class="header">
-        <div class="title"></div>
-        <div class="controls">
-          <input type="date">
+      <ha-card>
+        <div class="header">
+          <div class="title"></div>
+          <div class="controls">
+            <input type="date">
+          </div>
         </div>
-      </div>
-      <div class="map-wrap">
-        <div class="map"></div>
-        <div class="map-overlay">Lade …</div>
-      </div>
-      <div class="scrubber">
-        <input type="range" min="0" max="0" value="0" step="1">
-        <div class="scrub-label"></div>
-      </div>
-      <div class="segments"></div>
+        <div class="map-wrap">
+          <div class="map"></div>
+          <div class="map-overlay"></div>
+        </div>
+        <div class="scrubber">
+          <input type="range" min="0" max="0" value="0" step="1">
+          <div class="scrub-label"></div>
+        </div>
+        <div class="segments"></div>
+      </ha-card>
     `;
 
     this._titleEl = this.shadowRoot.querySelector(".title");
     this._dateEl = this.shadowRoot.querySelector("input[type=date]");
     this._mapEl = this.shadowRoot.querySelector(".map");
+    this._mapWrapEl = this.shadowRoot.querySelector(".map-wrap");
     this._overlayEl = this.shadowRoot.querySelector(".map-overlay");
     this._scrubberEl = this.shadowRoot.querySelector(".scrubber input");
     this._scrubLabelEl = this.shadowRoot.querySelector(".scrub-label");
@@ -529,6 +703,7 @@ class LocaltrackTimelineCard extends HTMLElement {
 
     const config = this._config || {};
     this._syncTitle();
+    this._applyTexts();
     this._mapEl.style.height = `${config.height}px`;
     const scrubber = this.shadowRoot.querySelector(".scrubber");
     scrubber.style.display = config.show_scrubber === false ? "none" : "";
@@ -555,7 +730,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._loading) return;
     this._loading = true;
     const day = this._day;
-    this._showStatus("Lade …");
+    this._showStatus(this._t.laden);
     try {
       await this._ensureMap();
       const bounds = localDayBounds(day);
@@ -576,7 +751,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       this._renderTrack();
       this._renderSegments();
       if (this._points.length === 0) {
-        this._showStatus("Keine Punkte an diesem Tag.");
+        this._showStatus(this._t.keine_punkte);
       } else {
         this._showStatus("");
       }
@@ -588,8 +763,23 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
   }
 
+  /** Static labels that are not part of the data: they change with the
+   *  language and therefore cannot be baked into the markup of `_build`. */
+  _applyTexts() {
+    const t = this._t;
+    if (this._dateEl) {
+      this._dateEl.title = t.tag_waehlen;
+      this._dateEl.setAttribute("aria-label", t.tag_waehlen);
+    }
+    if (this._scrubberEl) {
+      this._scrubberEl.title = t.zeitpunkt;
+      this._scrubberEl.setAttribute("aria-label", t.zeitpunkt);
+    }
+  }
+
   _syncTitle() {
     if (!this._titleEl || !this._config) return;
+    this._applyTexts();
     // Everywhere else in Home Assistant the user sees "Lukas", not
     // `person.lukas`. An explicit `title:` in the card config still wins; the
     // entity id is only the last resort for an entity that has no name yet.
@@ -609,18 +799,17 @@ class LocaltrackTimelineCard extends HTMLElement {
     // so an entry that was never created leaves it unregistered and Home
     // Assistant answers `unknown_command`. That fell through to the generic
     // text and hid the one thing worth saying.
+    const t = this._t;
     if (code === "not_found" || code === "unknown_command") {
-      return "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen → Local Track.";
+      return t.nicht_eingerichtet;
     }
     if (code === "unauthorized") {
-      return "Keine Berechtigung für Local Track.";
+      return t.keine_berechtigung;
     }
     // Never swallow the rest: without the message the card says nothing that
     // helps, which is what sent this bug back as "es geht einfach nicht".
     const detail = error?.message || code;
-    return detail
-      ? `Daten konnten nicht geladen werden: ${detail}`
-      : "Daten konnten nicht geladen werden.";
+    return detail ? fillText(t.ladefehler_grund, { grund: detail }) : t.ladefehler;
   }
 
   async _ensureMap() {
@@ -665,11 +854,19 @@ class LocaltrackTimelineCard extends HTMLElement {
       return;
     }
 
-    this._polyline = L.polyline(latLngs, { color: "#e53935", weight: 4, opacity: 0.85 }).addTo(this._map);
+    // Regel 4: auch die Farben der Kartengeometrie kommen aus dem Thema. Sie
+    // stehen in SVG-Attributen, die kein var() auswerten — deshalb wird der
+    // Wert hier ausgelesen, mit demselben Hex-Wert als Rueckfall wie zuvor.
+    const farbe = (name, ersatz) =>
+      (getComputedStyle(this).getPropertyValue(name) || "").trim() || ersatz;
+    const routeColor = farbe("--error-color", "#e53935");
+    const startColor = farbe("--success-color", "#4caf50");
+
+    this._polyline = L.polyline(latLngs, { color: routeColor, weight: 4, opacity: 0.85 }).addTo(this._map);
 
     if (latLngs.length > 1) {
-      L.circleMarker(latLngs[0], { radius: 5, color: "#2e7d32", fillColor: "#4caf50", fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
-      L.circleMarker(latLngs[latLngs.length - 1], { radius: 5, color: "#b71c1c", fillColor: "#e53935", fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
+      L.circleMarker(latLngs[0], { radius: 5, color: startColor, fillColor: startColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
+      L.circleMarker(latLngs[latLngs.length - 1], { radius: 5, color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
     }
 
     this._map.fitBounds(L.latLngBounds(latLngs).pad(0.2));
@@ -681,10 +878,16 @@ class LocaltrackTimelineCard extends HTMLElement {
       stayNumber += 1;
       const point = this._points[segment.startIndex];
       if (!point) return;
+      // `interactive: false` ist Absicht und nicht Kosmetik: die Nadel ist
+      // eine Beschriftung der Landkarte, kein Bedienelement. Ohne das faengt
+      // sie Klicks ab, die dem Verschieben der Karte gelten — und zwei
+      // Aufenthalte am selben Ort legen zwei anklickbare Nadeln uebereinander.
       L.marker([point.lat, point.lon], {
+        interactive: false,
+        keyboard: false,
         icon: L.divIcon({
           className: "",
-          html: `<div style="background:#03a9f4;color:#fff;border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:12px;font-weight:600;">${stayNumber}</div>`,
+          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:12px;font-weight:600;overflow:hidden;">${stayNumber}</div>`,
           iconSize: [22, 22],
           iconAnchor: [11, 11],
         }),
@@ -711,8 +914,11 @@ class LocaltrackTimelineCard extends HTMLElement {
     const zone = this._zoneLabel(point);
 
     if (!this._currentMarker) {
+      const rand = (getComputedStyle(this).getPropertyValue("--primary-text-color") || "").trim();
+      const fuellung = (getComputedStyle(this).getPropertyValue("--warning-color") || "").trim();
       this._currentMarker = L.circleMarker([point.lat, point.lon], {
-        radius: 6, color: "#000", fillColor: "#ffeb3b", fillOpacity: 1, weight: 2,
+        radius: 6, color: rand || "#000", fillColor: fuellung || "#ffeb3b",
+        fillOpacity: 1, weight: 2,
       }).addTo(this._markerLayer);
     } else {
       this._currentMarker.setLatLng([point.lat, point.lon]);
@@ -727,11 +933,12 @@ class LocaltrackTimelineCard extends HTMLElement {
   _zoneLabel(point) {
     const zone = findZone(this._hass, point.lat, point.lon);
     if (zone) return zone;
-    return "unterwegs";
+    return this._t.unterwegs;
   }
 
   async _renderSegments() {
     const L = this._leaflet;
+    const t = this._t;
     const locale = this._hass?.locale?.language || "de";
     if (!this._segments.length) {
       this._segmentsEl.innerHTML = "";
@@ -747,15 +954,15 @@ class LocaltrackTimelineCard extends HTMLElement {
       let meta;
       if (segment.kind === "stay") {
         const point = this._points[segment.startIndex];
-        label = findZone(this._hass, point.lat, point.lon) || "Aufenthalt";
+        label = findZone(this._hass, point.lat, point.lon) || t.aufenthalt;
         if (this._config.reverse_geocode) {
           const geoName = await reverseGeocode(point.lat, point.lon);
           if (geoName) label = geoName;
         }
-        meta = formatDuration(segment.end - segment.start);
+        meta = formatDuration(segment.end - segment.start, t);
       } else {
-        label = "Strecke";
-        meta = `${(segment.distance / 1000).toFixed(1)} km`;
+        label = t.strecke;
+        meta = fillText(t.km, { wert: (segment.distance / 1000).toFixed(1) });
       }
       rows.push(
         `<div class="segment ${segment.kind}" data-index="${i}">
@@ -776,6 +983,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       this._overlayEl.textContent = text;
       this._overlayEl.style.display = text ? "" : "none";
     }
+    if (this._mapWrapEl) this._mapWrapEl.classList.toggle("busy", Boolean(text));
   }
 }
 
@@ -794,8 +1002,18 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.schema = TIMELINE_CARD_SCHEMA;
-      this._form.computeLabel = (schema) => TIMELINE_LABELS[schema.name] || schema.name;
+      this._form.schema = SCHEMA_LOCALTRACK_TIMELINE_CARD;
+      // Regel 3: jedes Feld hat Label UND Helper, in der Sprache von
+      // `hass.locale.language`. Der Rueckfall auf den Feldnamen bleibt, damit
+      // ein neues Schemafeld ohne Woerterbucheintrag sichtbar auffaellt.
+      this._form.computeLabel = (schema) => {
+        const w = TEXTE_LOCALTRACK_TIMELINE_CARD[cardLanguage(this._hass)];
+        return w.labels[schema.name] || schema.name;
+      };
+      this._form.computeHelper = (schema) => {
+        const w = TEXTE_LOCALTRACK_TIMELINE_CARD[cardLanguage(this._hass)];
+        return w.helpers[schema.name] || "";
+      };
       this._form.addEventListener("value-changed", (event) => {
         event.stopPropagation();
         this.dispatchEvent(
@@ -817,10 +1035,13 @@ customElements.define("localtrack-timeline-card", LocaltrackTimelineCard);
 customElements.define("localtrack-timeline-card-editor", LocaltrackTimelineCardEditor);
 
 window.customCards = window.customCards || [];
+// Name und Beschreibung kommen aus dem Woerterbuch, die Sprache aus
+// navigator.language (BROWSER_LANG): dieser Eintrag entsteht beim Laden der
+// Datei, da gibt es noch kein `hass` und damit kein hass.locale.language.
 window.customCards.push({
   type: "localtrack-timeline-card",
-  name: "Local Track Timeline",
-  description: "Tages-Track einer Person — Route, Aufenthalte und Zeit-Scrubber.",
+  name: TEXTE_LOCALTRACK_TIMELINE_CARD[BROWSER_LANG].name,
+  description: TEXTE_LOCALTRACK_TIMELINE_CARD[BROWSER_LANG].description,
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });
@@ -837,9 +1058,11 @@ window.customCards.push({
  * `haversineMeters` wird bewusst wiederverwendet, nicht dupliziert.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** "8:12" statt "8 h 12 min" — eine Spalte, die sich untereinander liest. */
-function formatHoursMinutes(seconds) {
-  if (!seconds || seconds < 30) return "—";
+/** "8:12" statt "8 h 12 min" — eine Spalte, die sich untereinander liest.
+ *  `leer` ist der Platzhalter aus dem Wörterbuch der Karte; hier steht
+ *  bewusst kein nutzersichtbarer Text im Code (Regel 3). */
+function formatHoursMinutes(seconds, leer) {
+  if (!seconds || seconds < 30) return leer;
   const total = Math.round(seconds / 60);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
@@ -856,7 +1079,7 @@ function monthRange(year, month) {
   };
 }
 
-const ZONE_TIME_CARD_SCHEMA = [
+const SCHEMA_LOCALTRACK_ZONE_TIME_CARD = [
   {
     name: "entity",
     required: true,
@@ -879,13 +1102,99 @@ const ZONE_TIME_CARD_SCHEMA = [
   { name: "show_gross", selector: { boolean: {} } },
 ];
 
-const ZONE_TIME_LABELS = {
-  entity: "Person",
-  zone: "Ort (Zone)",
-  title: "Titel",
-  min_visit_minutes: "Aufenthalte kürzer als (min) zählen nicht",
-  max_gap_minutes: "Datenlücken höchstens (min) gutschreiben",
-  show_gross: "Bruttospalte anzeigen",
+const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
+  de: {
+    name: "Local Track Verweildauer",
+    description: "Wie lange eine Person an einem Ort war — ein Monat als Tagesliste.",
+    labels: {
+      entity: "Person",
+      zone: "Ort",
+      title: "Titel",
+      min_visit_minutes: "Mindestaufenthalt",
+      max_gap_minutes: "Lücken gutschreiben",
+      show_gross: "Bruttospalte",
+    },
+    helpers: {
+      entity: "Die Person oder das Gerät, deren Anwesenheit gezählt wird. Vorgabe: die erste aufgezeichnete Person.",
+      zone: "Die Zone, an der gemessen wird. Vorgabe: die kleinste Zone außer Zuhause.",
+      title: "Überschrift der Karte. Vorgabe: der Name der Zone.",
+      min_visit_minutes: "Minuten, ab denen ein Halt als Aufenthalt zählt. Kürzere zählen gar nicht. Vorgabe 5.",
+      max_gap_minutes: "Minuten, die eine Datenlücke höchstens gutgeschrieben bekommt. Längere Lücken beenden den Aufenthalt. Vorgabe 30.",
+      show_gross: "Zeigt neben der Nettozeit auch die Bruttozeit von der Ankunft bis zum Gehen. Vorgabe an.",
+    },
+    texte: {
+      laden: "Lade …",
+      spalte_tag: "Tag",
+      spalte_netto: "netto",
+      spalte_brutto: "brutto",
+      summe: "Summe",
+      schnitt: "Schnitt je Tag",
+      voriger_monat: "Voriger Monat",
+      naechster_monat: "Nächster Monat",
+      person_waehlen: "Person wählen",
+      ort_waehlen: "Ort wählen",
+      titel_ersatz: "Verweildauer",
+      leer: "—",
+      notiz: "{tage} von {gesamt} Tagen anwesend, {besuche} Aufenthalte.",
+      keine_anwesenheit: "In diesem Monat keine Anwesenheit erfasst.",
+      zone_ohne_koordinaten: "Zone {zone} hat keine Koordinaten.",
+      veraltet: "Local Track v0.3.0 fehlt — Integration aktualisieren und Home Assistant neu starten.",
+      nicht_eingerichtet: "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen.",
+      ladefehler: "Daten konnten nicht geladen werden.",
+      ladefehler_grund: "Daten konnten nicht geladen werden: {grund}",
+      fehlt_entity: "localtrack-zone-time-card: 'entity' fehlt",
+      fehlt_zone: "localtrack-zone-time-card: 'zone' fehlt",
+      monate: ["Januar", "Februar", "März", "April", "Mai", "Juni",
+               "Juli", "August", "September", "Oktober", "November", "Dezember"],
+      wochentage: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+    },
+  },
+  en: {
+    name: "Local Track time at place",
+    description: "How long a person was at one place — a month as a day-by-day list.",
+    labels: {
+      entity: "Person or device",
+      zone: "Place",
+      title: "Title",
+      min_visit_minutes: "Minimum stay",
+      max_gap_minutes: "Credit gaps",
+      show_gross: "Gross column",
+    },
+    helpers: {
+      entity: "The person or device whose presence is counted. Default: the first recorded person.",
+      zone: "The zone that is measured. Default: the smallest zone other than home.",
+      title: "Heading of the card. Default: the name of the zone.",
+      min_visit_minutes: "Minutes after which a stop counts as a stay. Shorter ones do not count at all. Default 5.",
+      max_gap_minutes: "Minutes a gap in the data may at most be credited. Longer gaps end the stay. Default 30.",
+      show_gross: "Shows the gross time from arrival to leaving next to the net time. Default on.",
+    },
+    texte: {
+      laden: "Loading …",
+      spalte_tag: "Day",
+      spalte_netto: "net",
+      spalte_brutto: "gross",
+      summe: "Total",
+      schnitt: "Daily average",
+      voriger_monat: "Previous month",
+      naechster_monat: "Next month",
+      person_waehlen: "Pick a person",
+      ort_waehlen: "Pick a place",
+      titel_ersatz: "Time at place",
+      leer: "—",
+      notiz: "Present on {tage} of {gesamt} days, {besuche} stays.",
+      keine_anwesenheit: "No presence recorded in this month.",
+      zone_ohne_koordinaten: "Zone {zone} has no coordinates.",
+      veraltet: "Local Track v0.3.0 is missing — update the integration and restart Home Assistant.",
+      nicht_eingerichtet: "Local Track is not set up — Settings → Devices & services → Add integration.",
+      ladefehler: "Could not load the data.",
+      ladefehler_grund: "Could not load the data: {grund}",
+      fehlt_entity: "localtrack-zone-time-card: 'entity' is missing",
+      fehlt_zone: "localtrack-zone-time-card: 'zone' is missing",
+      monate: ["January", "February", "March", "April", "May", "June",
+               "July", "August", "September", "October", "November", "December"],
+      wochentage: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
+    },
+  },
 };
 
 const ZONE_TIME_DEFAULTS = {
@@ -894,48 +1203,74 @@ const ZONE_TIME_DEFAULTS = {
   show_gross: true,
 };
 
-const ZONE_TIME_MONTHS = [
-  "Januar", "Februar", "März", "April", "Mai", "Juni",
-  "Juli", "August", "September", "Oktober", "November", "Dezember",
-];
-const ZONE_TIME_WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-
 const ZONE_TIME_STYLES = `
   /* position + z-index machen den Host zu einem eigenen Stapelkontext.
      Diese Karte enthält zwar kein Leaflet, aber die Lehre aus v0.1.2 gilt
      allgemein: was hier drin an z-index vergeben wird, soll hier drin
      bleiben und nicht mit Home Assistants Dialogschicht konkurrieren. */
   :host { display: block; position: relative; z-index: 0; container-type: inline-size; }
-  .head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-  .title { font-size: 1.1em; font-weight: 600; }
-  .pickers { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* Regel 4: Innenabstand var(--ha-space-4) an der ha-card, wie HAs
+     eigener .card-content. ha-card ist ein Kind dieses Shadow-Roots. */
+  ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
+  .head { display: flex; flex-direction: column; gap: var(--ha-space-2, 8px); margin-bottom: 10px; }
+  /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. */
+  .title {
+    font-size: var(--ha-font-size-l, 1.1em); font-weight: var(--ha-font-weight-medium, 600);
+    color: var(--primary-text-color); min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pickers { display: flex; gap: var(--ha-space-2, 8px); flex-wrap: wrap; }
   .pickers select {
-    flex: 1 1 8em; min-width: 0; padding: 4px 6px; font: inherit; font-size: 0.9em;
+    flex: 1 1 8em; min-width: 0; padding: 4px 6px; font: inherit;
+    font-size: var(--ha-font-size-s, 0.9em);
     color: var(--primary-text-color); background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .month { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .month { display: flex; align-items: center; justify-content: center; gap: var(--ha-space-3, 12px); }
   .month button {
     border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
-    padding: 2px 10px; border-radius: 6px; color: var(--primary-text-color);
+    padding: 2px 10px; border-radius: 6px; color: var(--primary-text-color); flex: 0 0 auto;
   }
   .month button:hover { background: var(--secondary-background-color, #e5e5e5); }
-  .month .label { min-width: 10em; text-align: center; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th { font-size: 0.75em; font-weight: 600; text-transform: uppercase;
-       color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 4px; }
-  th.day { text-align: left; }
-  td { padding: 3px 0; font-size: 0.92em; border-top: 1px solid var(--divider-color, #e0e0e0); }
-  td.day { white-space: nowrap; }
-  td.num { text-align: right; padding-left: 10px; white-space: nowrap; }
-  td.bar { width: 34%; padding-left: 10px; }
+  .month .label {
+    flex: 1 1 auto; min-width: 0; text-align: center;
+    font-weight: var(--ha-font-weight-medium, 600);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* table-layout: fixed ist Voraussetzung, nicht Geschmack: ohne sie richtet
+     sich die Spaltenbreite nach dem laengsten Inhalt, und text-overflow
+     bekommt in einer Zelle nie eine Kante, an der es kuerzen koennte.
+     Keine Backticks in diesem Kommentar — sie wuerden das Vorlagenliteral
+     beenden (siehe hacs/CLAUDE.md, node --check vor jedem Lauf). */
+  table {
+    width: 100%; table-layout: fixed; border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  th { font-size: 0.75em; font-weight: var(--ha-font-weight-medium, 600); text-transform: uppercase;
+       color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 4px;
+       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th.day { text-align: left; width: 42%; }
+  th.net, th.gross { width: 16%; }
+  th.bar { width: 26%; }
+  td { padding: 3px 0; font-size: 0.92em; border-top: 1px solid var(--divider-color, #e0e0e0);
+       color: var(--primary-text-color); }
+  td.day { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.num { text-align: right; padding-left: 10px;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.bar { padding-left: 10px; }
   tr.weekend td.day { color: var(--secondary-text-color, #727272); }
   tr.empty td { color: var(--disabled-text-color, #bdbdbd); }
-  tr.today td { font-weight: 700; }
+  tr.today td { font-weight: var(--ha-font-weight-bold, 700); }
   .fill { height: 8px; border-radius: 4px; background: var(--primary-color, #03a9f4); min-width: 2px; }
-  tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0); font-weight: 600; padding-top: 6px; }
-  .note { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color, #727272); }
-  .status { padding: 14px 0; text-align: center; color: var(--secondary-text-color, #727272); font-size: 0.9em; }
+  tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0);
+             font-weight: var(--ha-font-weight-medium, 600); padding-top: 6px; }
+  /* mehrzeilig: overflow-wrap: anywhere, damit ein langes Wort umbricht
+     statt die Karte zu sprengen (Regel 1). */
+  .note { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color, #727272);
+          overflow-wrap: anywhere; }
+  .status { padding: 14px 0; text-align: center; color: var(--secondary-text-color, #727272);
+            font-size: var(--ha-font-size-s, 0.9em); overflow-wrap: anywhere; }
   .status[hidden] { display: none; }
   /* Schmale Karte: die Bruttospalte und der Balken fliegen zuerst raus,
      die Nettozahl ist die, wegen der man hinsieht. */
@@ -982,12 +1317,19 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._pending = null;
   }
 
+  /** Dictionary section for the active language; before `hass` arrives the
+   *  browser language decides, same as for the customCards entry. */
+  get _t() {
+    const sprache = this._hass ? cardLanguage(this._hass) : BROWSER_LANG;
+    return TEXTE_LOCALTRACK_ZONE_TIME_CARD[sprache].texte;
+  }
+
   setConfig(config) {
     if (!config || !config.entity) {
-      throw new Error("localtrack-zone-time-card: 'entity' fehlt");
+      throw new Error(this._t.fehlt_entity);
     }
     if (!config.zone) {
-      throw new Error("localtrack-zone-time-card: 'zone' fehlt");
+      throw new Error(this._t.fehlt_zone);
     }
     this._config = { ...ZONE_TIME_DEFAULTS, ...config };
     this._entity = this._config.entity;
@@ -1008,6 +1350,12 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 
   getCardSize() { return 8; }
+
+  /** Spalten in Vielfachen von 3 (Spec, Regel 3). Eine Monatstabelle wird
+   *  schmal noch lesbar, deshalb min_columns 6. */
+  getGridOptions() {
+    return { columns: 12, rows: 8, min_columns: 6, min_rows: 4 };
+  }
 
   connectedCallback() {
     if (this._config && this._hass && !this._result) this._start();
@@ -1035,18 +1383,18 @@ class LocaltrackZoneTimeCard extends HTMLElement {
             <select class="pick-zone"></select>
           </div>
           <div class="month">
-            <button class="prev" title="Voriger Monat">‹</button>
+            <button class="prev">‹</button>
             <span class="label"></span>
-            <button class="next" title="Nächster Monat">›</button>
+            <button class="next">›</button>
           </div>
         </div>
         <div class="status"></div>
         <table>
           <thead>
             <tr>
-              <th class="day">Tag</th>
-              <th class="net">netto</th>
-              <th class="gross">brutto</th>
+              <th class="day"></th>
+              <th class="net"></th>
+              <th class="gross"></th>
               <th class="bar"></th>
             </tr>
           </thead>
@@ -1078,14 +1426,39 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       this._syncTitle();
       this._load();
     });
+    this._applyTexts();
     this._syncTitle();
+  }
+
+  /** Static labels of the markup — they change with the language, so they
+   *  cannot be baked into the template of `_build`. */
+  _applyTexts() {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const t = this._t;
+    const setzen = (sel, text) => {
+      const el = root.querySelector(sel);
+      if (el) el.textContent = text;
+    };
+    setzen("th.day", t.spalte_tag);
+    setzen("th.net", t.spalte_netto);
+    setzen("th.gross", t.spalte_brutto);
+    const prev = root.querySelector(".prev");
+    const next = root.querySelector(".next");
+    if (prev) { prev.title = t.voriger_monat; prev.setAttribute("aria-label", t.voriger_monat); }
+    if (next) { next.title = t.naechster_monat; next.setAttribute("aria-label", t.naechster_monat); }
+    if (this._entityEl) this._entityEl.setAttribute("aria-label", t.person_waehlen);
+    if (this._entityEl) this._entityEl.title = t.person_waehlen;
+    if (this._zoneEl) this._zoneEl.setAttribute("aria-label", t.ort_waehlen);
+    if (this._zoneEl) this._zoneEl.title = t.ort_waehlen;
   }
 
   _syncTitle() {
     if (!this._titleEl || !this._config) return;
+    this._applyTexts();
     const zone = this._hass?.states?.[this._zone];
     const name = zone?.attributes?.friendly_name || this._zone || "";
-    this._titleEl.textContent = this._config.title || name || "Verweildauer";
+    this._titleEl.textContent = this._config.title || name || this._t.titel_ersatz;
   }
 
   _shiftMonth(delta) {
@@ -1158,14 +1531,14 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     if (this._loading) { this._pending = true; return; }
     this._loading = true;
     const wanted = { ...this._month, entity: this._entity, zone: this._zone };
-    this._labelEl.textContent =
-      `${ZONE_TIME_MONTHS[this._month.month - 1]} ${this._month.year}`;
-    this._showStatus("Lade …");
+    const t = this._t;
+    this._labelEl.textContent = `${t.monate[this._month.month - 1]} ${this._month.year}`;
+    this._showStatus(t.laden);
     try {
       await this._loadTracked();
       const zone = this._hass.states?.[this._zone];
       if (!zone || zone.attributes?.latitude == null) {
-        this._showStatus(`Zone ${this._zone} hat keine Koordinaten.`);
+        this._showStatus(fillText(t.zone_ohne_koordinaten, { zone: this._zone }));
         this._bodyEl.innerHTML = "";
         this._footEl.innerHTML = "";
         return;
@@ -1207,16 +1580,15 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     // die Integration gar nicht eingerichtet ist — die Befehle werden in
     // `async_setup_entry` registriert. Wer nur `not_found` abfängt,
     // verschweigt den häufigsten Fall.
+    const t = this._t;
     if (code === "unknown_command") {
-      return "Local Track v0.3.0 fehlt — Integration aktualisieren und Home Assistant neu starten.";
+      return t.veraltet;
     }
     if (code === "not_found") {
-      return "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen.";
+      return t.nicht_eingerichtet;
     }
     const detail = error?.message || code;
-    return detail
-      ? `Daten konnten nicht geladen werden: ${detail}`
-      : "Daten konnten nicht geladen werden.";
+    return detail ? fillText(t.ladefehler_grund, { grund: detail }) : t.ladefehler;
   }
 
   _showStatus(text) {
@@ -1228,6 +1600,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   /* ── Darstellung ────────────────────────────────────────────────────── */
 
   _render(daysInMonth, wanted) {
+    const t = this._t;
     const byDate = new Map((this._result.days || []).map((d) => [d.date, d]));
     const showGross = this._config.show_gross !== false;
     this._tableEl.classList.toggle("gross-off", !showGross);
@@ -1245,7 +1618,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       const key = `${wanted.year}-${pad(wanted.month)}-${pad(day)}`;
       const entry = byDate.get(key);
       const date = new Date(wanted.year, wanted.month - 1, day);
-      const weekday = ZONE_TIME_WEEKDAYS[date.getDay()];
+      const weekday = t.wochentage[date.getDay()];
       const classes = [];
       if (date.getDay() === 0 || date.getDay() === 6) classes.push("weekend");
       if (!entry) classes.push("empty");
@@ -1254,8 +1627,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       rows.push(`
         <tr class="${classes.join(" ")}">
           <td class="day">${weekday}&nbsp;${pad(day)}.${pad(wanted.month)}.</td>
-          <td class="num net">${entry ? formatHoursMinutes(entry.net_s) : "—"}</td>
-          <td class="num gross">${entry ? formatHoursMinutes(entry.gross_s) : "—"}</td>
+          <td class="num net">${entry ? formatHoursMinutes(entry.net_s, t.leer) : t.leer}</td>
+          <td class="num gross">${entry ? formatHoursMinutes(entry.gross_s, t.leer) : t.leer}</td>
           <td class="bar">${entry ? `<div class="fill" style="width:${width}%"></div>` : ""}</td>
         </tr>`);
     }
@@ -1265,22 +1638,22 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const average = present ? this._result.total_net_s / present : 0;
     this._footEl.innerHTML = `
       <tr>
-        <td class="day">Summe</td>
-        <td class="num net">${formatHoursMinutes(this._result.total_net_s)}</td>
-        <td class="num gross">${formatHoursMinutes(this._result.total_gross_s)}</td>
+        <td class="day">${t.summe}</td>
+        <td class="num net">${formatHoursMinutes(this._result.total_net_s, t.leer)}</td>
+        <td class="num gross">${formatHoursMinutes(this._result.total_gross_s, t.leer)}</td>
         <td class="bar"></td>
       </tr>
       <tr>
-        <td class="day">Schnitt je Tag</td>
-        <td class="num net">${formatHoursMinutes(average)}</td>
+        <td class="day">${t.schnitt}</td>
+        <td class="num net">${formatHoursMinutes(average, t.leer)}</td>
         <td class="num gross"></td>
         <td class="bar"></td>
       </tr>`;
 
     const visits = this._result.total_visits || 0;
     this._noteEl.textContent = present
-      ? `${present} von ${daysInMonth} Tagen anwesend, ${visits} Aufenthalte.`
-      : "In diesem Monat keine Anwesenheit erfasst.";
+      ? fillText(t.notiz, { tage: present, gesamt: daysInMonth, besuche: visits })
+      : t.keine_anwesenheit;
   }
 }
 
@@ -1299,8 +1672,16 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.schema = ZONE_TIME_CARD_SCHEMA;
-      this._form.computeLabel = (schema) => ZONE_TIME_LABELS[schema.name] || schema.name;
+      this._form.schema = SCHEMA_LOCALTRACK_ZONE_TIME_CARD;
+      // Regel 3: Label UND Helper je Feld, Sprache aus hass.locale.language.
+      this._form.computeLabel = (schema) => {
+        const w = TEXTE_LOCALTRACK_ZONE_TIME_CARD[cardLanguage(this._hass)];
+        return w.labels[schema.name] || schema.name;
+      };
+      this._form.computeHelper = (schema) => {
+        const w = TEXTE_LOCALTRACK_ZONE_TIME_CARD[cardLanguage(this._hass)];
+        return w.helpers[schema.name] || "";
+      };
       this._form.addEventListener("value-changed", (event) => {
         event.stopPropagation();
         // Nur schreiben, was vom Standard abweicht. Sonst macht der Editor aus
@@ -1328,10 +1709,12 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
 customElements.define("localtrack-zone-time-card", LocaltrackZoneTimeCard);
 customElements.define("localtrack-zone-time-card-editor", LocaltrackZoneTimeCardEditor);
 
+// Sprache aus navigator.language (BROWSER_LANG), siehe oben: hier gibt es
+// noch kein `hass` und damit kein hass.locale.language.
 window.customCards.push({
   type: "localtrack-zone-time-card",
-  name: "Local Track Verweildauer",
-  description: "Wie lange eine Person an einem Ort war — ein Monat als Tagesliste.",
+  name: TEXTE_LOCALTRACK_ZONE_TIME_CARD[BROWSER_LANG].name,
+  description: TEXTE_LOCALTRACK_ZONE_TIME_CARD[BROWSER_LANG].description,
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });

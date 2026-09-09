@@ -72,7 +72,6 @@ PAGE = """<!doctype html>
   }
   body { margin: 0; padding: 16px; background: #f2f4f7; font-family: Roboto, sans-serif; }
   #wrap { max-width: 560px; margin: 0 auto; }
-  ha-card { display: block; background: #fff; border-radius: 12px; padding: 16px; }
 
   /* Nachbau der Dialogschicht von Home Assistant. `mwc-dialog` — worauf
      ha-dialog und der Mehr-Info-Dialog aufsetzen — legt seinen Vordergrund auf
@@ -92,7 +91,19 @@ PAGE = """<!doctype html>
 <div id="scrim"></div>
 <div id="dialog"><h2>Mehr-Info</h2><p>Dieser Dialog muss oben liegen.</p></div>
 <script>
-  class HaCard extends HTMLElement {}
+  /* ha-card braucht einen eigenen Shadow-Root mit :host-Stil: die Karte
+     rendert ihre ha-card in ihrem EIGENEN Shadow-Root, Dokument-CSS erreicht
+     sie dort nicht. Ohne den Stil waere sie `display: inline` und der Aufbau
+     der Attrappe saehe anders aus als der der echten Karte. */
+  class HaCard extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>:host{display:block;box-sizing:border-box;' +
+        'background:var(--ha-card-background,var(--card-background-color,#fff));' +
+        'border-radius:var(--ha-card-border-radius,12px);}</style><slot></slot>';
+    }
+  }
   customElements.define('ha-card', HaCard);
   class HaIcon extends HTMLElement {
     connectedCallback() { this.style.cssText = 'display:inline-block;width:24px;height:24px'; }
