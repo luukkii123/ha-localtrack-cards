@@ -178,7 +178,7 @@ Sammelordner, alle vier Regeln, beide Karten. **Alles grün, Exit 0.**
 | Beleg | Umfang | Ergebnis |
 | --- | --- | --- |
 | `python3 scripts/ui-regeln-pruefen.py --repo ha-localtrack-cards` | statisch, Regel 3 und 4 | 0 Verstöße (vorher 18) |
-| `docs/render/render.py` (Timeline) | 30 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel, zusätzlich derselbe Satz im Fehlerzustand | 138 + 108 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
+| `docs/render/render.py` (Timeline) | 34 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel, zusätzlich derselbe Satz im Fehlerzustand | 138 + 108 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
 | `docs/render/zonetime.py` (Verweildauer) | 50 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel | 636 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
 | `docs/render/zindex.py` | Stapelkontext gegen die Dialogschicht | unverändert grün |
 
