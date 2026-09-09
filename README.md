@@ -179,7 +179,7 @@ Sammelordner, alle vier Regeln, beide Karten. **Alles grün, Exit 0.**
 | --- | --- | --- |
 | `python3 scripts/ui-regeln-pruefen.py --repo ha-localtrack-cards` | statisch, Regel 3 und 4 | 0 Verstöße (vorher 18) |
 | `docs/render/render.py` (Timeline) | 34 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel, zusätzlich derselbe Satz im Fehlerzustand | 138 + 108 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
-| `docs/render/zonetime.py` (Verweildauer) | 50 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel | 636 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
+| `docs/render/zonetime.py` (Verweildauer) | 53 Prüfungen; Regel 1 bei 320/480/960 px × hell/dunkel, dazu die Tagesspalte in beiden Sprachen | 636 gemessene Textelemente, 0 Überlauf, 0 außerhalb, 0 Überlappung |
 | `docs/render/zindex.py` | Stapelkontext gegen die Dialogschicht | unverändert grün |
 
 Was dabei **nicht** nur behauptet, sondern gemessen wurde:
@@ -192,13 +192,18 @@ Was dabei **nicht** nur behauptet, sondern gemessen wurde:
   Eine absichtlich überfüllte Zelle bleibt bei 163 px, die Tabelle bei 288 px,
   und der Inhalt wird bei `scrollWidth` 524 gegen `clientWidth` 163 gekürzt.
 - **Regel 2:** Die Karten haben **keine** Popups — auch das ist ein Messwert.
-  Nach 14 ausgelösten Klicks auf Segmentzeilen, Aufenthaltsnadeln, Route und
+  Nach 13 ausgelösten Klicks auf Segmentzeilen, Aufenthaltsnadeln, Route und
   Landkarte gab es 0 Leaflet-Popups, 0 Tooltips, 0 Dialoge, die Popup-Ebene
   blieb leer, `location.href` und `history.length` unverändert.
 - **Regel 3:** Der ausgelieferte Text ist geprüft, nicht das Vorhandensein der
   Funktionen: alle 9 bzw. 6 Schemafelder liefern Label **und** Helper in
   deutsch **und** englisch, die Sprachen unterscheiden sich, jeder Helper endet
   auf einen Punkt, kein Label tut es.
+- **Regel 3, Datum:** Auch die Tagesspalte der Verweildauer-Karte folgt
+  `hass.locale.language` — gemessen an zwei Karten auf derselben Seite:
+  deutsch `Di 01.09.`, englisch `Tu 09/01`. Der Wochentag kommt aus dem
+  Wörterbuch, die Zahlen aus `Intl.DateTimeFormat`. Vorher stand dort in
+  **beiden** Sprachen das deutsche `01.09.`.
 - **Regel 4:** Beide Karten rendern in `<ha-card>` mit `var(--ha-space-4)`, und
   jede Messung lief in beiden Themen.
 

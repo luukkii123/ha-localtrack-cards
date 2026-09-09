@@ -284,6 +284,30 @@ with sync_playwright() as pw:
           hilfetexte: (window.__formSchema || []).map((s) => window.__formHelper(s)),
         };
     }""")
+    # Regel 3 gilt auch fuer das DATUM in der Tagesspalte. Ein Woerterbuch
+    # liefert nur den Wochentag; die Zahlen kommen aus Intl und muessen
+    # `hass.locale.language` folgen. Gemessen an einer zweiten Karte, weil der
+    # hass-Setter bewusst nicht neu rendert (siehe dist, set hass).
+    tag_sprachen = page.evaluate("""async () => {
+        const lies = async (sprache) => {
+          const c = document.createElement('localtrack-zone-time-card');
+          c.setConfig({ type: 'custom:localtrack-zone-time-card',
+                        entity: 'person.lukas', zone: 'zone.lukas_arbeit' });
+          document.body.appendChild(c);
+          c.hass = { ...window.__hass, locale: { language: sprache } };
+          for (let i = 0; i < 100; i++) {
+            const tr = c.shadowRoot.querySelector('tbody tr');
+            if (tr && tr.querySelector('td.day').textContent.trim()) break;
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          const wert = c.shadowRoot.querySelector('tbody tr td.day')
+              .textContent.replace(/\\s+/g, ' ').trim();
+          c.remove();
+          return wert;
+        };
+        return { de: await lies('de'), en: await lies('en') };
+    }""")
+
     page.screenshot(path=str(OUT / "breit.png"), full_page=True)
 
     # ── Regel 1 und 4: 320/480/960 px, hell und dunkel ─────────────────────
@@ -380,6 +404,18 @@ checks["Tag 2: brutto groesser netto"] = wide["zweite"][1:3] == ["7:48", "8:19"]
 checks["Tag 3: 8:51 / 9:56"] = wide["dritte"][1:3] == ["8:51", "9:56"]
 checks["leerer Tag zeigt Gedankenstrich"] = wide["vierte"][1:3] == ["—", "—"]
 checks["Wochentag steht vor dem Datum"] = wide["erste"][0].startswith("Di")
+# de: "Di 01.09."  en: "Tu 09/01" — Wochentag aus dem Woerterbuch, Zahlen aus
+# Intl. Das Sollwertpaar faengt beides: eine feste Sprache und ein Datum, das
+# gar nicht mehr erscheint.
+checks["Tagesspalte deutsch: 01.09."] = (
+    tag_sprachen["de"].startswith("Di") and "01.09." in tag_sprachen["de"]
+)
+checks["Tagesspalte englisch: 09/01"] = (
+    tag_sprachen["en"].startswith("Tu") and "09/01" in tag_sprachen["en"]
+)
+checks["Tagesspalte unterscheidet die Sprachen"] = (
+    tag_sprachen["de"] != tag_sprachen["en"]
+)
 checks["Summe = 24:51 / 26:27"] = wide["fuss"][0][1:3] == ["24:51", "26:27"]
 checks["Schnitt = 8:17"] = wide["fuss"][1][1] == "8:17"
 checks["Notiz nennt 3 von 30 Tagen"] = "3 von 30" in wide["notiz"]
@@ -417,7 +453,9 @@ checks["Editor-Element"] = editor["tag"] == "localtrack-zone-time-card-editor"
 checks["Editor hat sechs Felder"] = editor["felder"] == [
     "entity", "zone", "title", "min_visit_minutes", "max_gap_minutes", "show_gross"
 ]
-checks["Editor beschriftet deutsch"] = editor["beschriftungen"][0] == "Person"
+# Der Selektor laesst person.* UND device_tracker.* zu — das Label sagt das in
+# beiden Sprachen, seit dem 09.09.2026 auch auf Deutsch ("Person" war zu eng).
+checks["Editor beschriftet deutsch"] = editor["beschriftungen"][0] == "Person oder Gerät"
 checks["Editor zeigt Standardwerte"] = (
     editor["daten"]["min_visit_minutes"] == 5 and editor["daten"]["show_gross"] is True
 )
@@ -473,6 +511,7 @@ report = {
     "schmal": {k: narrow[k] for k in ("zeilen", "erste", "bruttoSichtbar", "balkenSichtbar")},
     "editor": editor,
     "editor_en": editor_en,
+    "tag_sprachen": tag_sprachen,
     "regel1": regel1,
     "regel1_tabellenzelle": zelle,
     "regel1_selbsttest": regel1_selbsttest,

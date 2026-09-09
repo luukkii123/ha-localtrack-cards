@@ -271,6 +271,19 @@ function formatClock(date, locale) {
   }
 }
 
+/** Day and month of `date` in the user's language — "01.09." in German,
+ *  "09/01" in English. The weekday next to it comes from the dictionary
+ *  (`texte.wochentage`), so both halves follow `hass.locale.language`
+ *  (rule 3). The fallback is the German form the card used before. */
+function formatDayMonth(date, locale) {
+  try {
+    return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit" }).format(date);
+  } catch {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.`;
+  }
+}
+
 /** `texte` is the `texte` section of TEXTE_LOCALTRACK_TIMELINE_CARD for the
  *  active language — no user-visible text lives in this function. */
 function formatDuration(seconds, texte) {
@@ -1107,7 +1120,7 @@ const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
     name: "Local Track Verweildauer",
     description: "Wie lange eine Person an einem Ort war — ein Monat als Tagesliste.",
     labels: {
-      entity: "Person",
+      entity: "Person oder Gerät",
       zone: "Ort",
       title: "Titel",
       min_visit_minutes: "Mindestaufenthalt",
@@ -1247,17 +1260,21 @@ const ZONE_TIME_STYLES = `
     width: 100%; table-layout: fixed; border-collapse: collapse;
     font-variant-numeric: tabular-nums;
   }
+  /* Alle vier Kuerzungseigenschaften, auch min-width: 0 — Regel 1 verlangt sie
+     an jedem einzeiligen Textcontainer. In einer Tabellenzelle wirkt min-width
+     nicht (das Tabellenlayout bestimmt die Breite), aber die Regel ist
+     maschinell pruefbar und kennt hier keine Ausnahme. */
   th { font-size: 0.75em; font-weight: var(--ha-font-weight-medium, 600); text-transform: uppercase;
        color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 4px;
-       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   th.day { text-align: left; width: 42%; }
   th.net, th.gross { width: 16%; }
   th.bar { width: 26%; }
   td { padding: 3px 0; font-size: 0.92em; border-top: 1px solid var(--divider-color, #e0e0e0);
        color: var(--primary-text-color); }
-  td.day { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.day { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   td.num { text-align: right; padding-left: 10px;
-           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   td.bar { padding-left: 10px; }
   tr.weekend td.day { color: var(--secondary-text-color, #727272); }
   tr.empty td { color: var(--disabled-text-color, #bdbdbd); }
@@ -1606,6 +1623,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._tableEl.classList.toggle("gross-off", !showGross);
 
     const pad = (n) => String(n).padStart(2, "0");
+    /* Same source as `_t`: `hass.locale.language`, and before `hass` arrives the
+       browser language — otherwise the weekday and the numbers could disagree. */
+    const locale = (this._hass && this._hass.locale && this._hass.locale.language)
+      || (typeof navigator !== "undefined" && navigator.language) || "de";
     const today = new Date();
     const isThisMonth = today.getFullYear() === wanted.year
       && today.getMonth() + 1 === wanted.month;
@@ -1626,7 +1647,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       const width = entry ? Math.round((entry.net_s / maxNet) * 100) : 0;
       rows.push(`
         <tr class="${classes.join(" ")}">
-          <td class="day">${weekday}&nbsp;${pad(day)}.${pad(wanted.month)}.</td>
+          <td class="day">${weekday}&nbsp;${formatDayMonth(date, locale)}</td>
           <td class="num net">${entry ? formatHoursMinutes(entry.net_s, t.leer) : t.leer}</td>
           <td class="num gross">${entry ? formatHoursMinutes(entry.gross_s, t.leer) : t.leer}</td>
           <td class="bar">${entry ? `<div class="fill" style="width:${width}%"></div>` : ""}</td>
