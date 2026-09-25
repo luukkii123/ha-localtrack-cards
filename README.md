@@ -211,6 +211,21 @@ Was dabei **nicht** nur behauptet, sondern gemessen wurde:
 Dass Home Assistants echtes `ha-form` diese Selektoren so darstellt und den
 Helper anzeigt, entscheidet erst der Live-Test.
 
+### Editor-Vertrag — 25.09.2026
+
+`docs/render/editor_contract.py` prüft beide ausgelieferten Editoren im Browser:
+`setConfig` bleibt bei gleichen Werten ohne erneutes Form-Update, schnelle
+Feldänderungen liefern sofort eine vollständige Konfiguration, `0` und `false`
+bleiben erhalten, und `keydown`/`keyup` verlassen den Editor nicht, ohne die
+native Eingabe abzubrechen. Die bestehenden Renderläufe prüfen weiterhin
+320/480/960 px in Hell und Dunkel für beide Karten.
+
+`getConfigForm` wird hier nicht verwendet: Der bestehende Editor liefert
+DE/EN-Label und Helper anhand der aktuellen HA-Sprache, ergänzt die
+Verweildauer-Vorgaben nur in der Anzeige und lässt die dynamischen
+`getStubConfig`-Vorschläge für Person und Zone bestehen. Für eine Umstellung
+fehlt ein Gleichwertigkeitsbeleg für diese Funktionen im echten HA-Frontend.
+
 ## Herkunft
 
 Die Karte hieß bis Version 0.3.0 von

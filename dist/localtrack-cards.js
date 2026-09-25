@@ -1000,15 +1000,37 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 }
 
+function sameEditorConfig(left, right) {
+  if (!left) return false;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length
+    && keys.every((key) => Object.hasOwn(right, key) && left[key] === right[key]);
+}
+
+function guardEditorKeys(editor) {
+  // Let ha-form handle typing first, then keep HA's dashboard shortcuts out.
+  // Stopping bubbling does not cancel the input's native key behavior.
+  editor.addEventListener("keydown", (event) => event.stopPropagation());
+  editor.addEventListener("keyup", (event) => event.stopPropagation());
+}
+
 class LocaltrackTimelineCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    guardEditorKeys(this);
+  }
+
   setConfig(config) {
-    this._config = config || {};
+    const next = { ...(config || {}) };
+    if (sameEditorConfig(this._config, next)) return;
+    this._config = next;
     this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    if (this._form) this._form.hass = hass;
+    else this._render();
   }
 
   _render() {
@@ -1029,9 +1051,10 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
       };
       this._form.addEventListener("value-changed", (event) => {
         event.stopPropagation();
+        this._config = { ...this._config, ...event.detail.value };
         this.dispatchEvent(
           new CustomEvent("config-changed", {
-            detail: { config: { ...this._config, ...event.detail.value } },
+            detail: { config: { ...this._config } },
             bubbles: true,
             composed: true,
           })
@@ -1679,14 +1702,22 @@ class LocaltrackZoneTimeCard extends HTMLElement {
 }
 
 class LocaltrackZoneTimeCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    guardEditorKeys(this);
+  }
+
   setConfig(config) {
-    this._config = config || {};
+    const next = { ...(config || {}) };
+    if (sameEditorConfig(this._config, next)) return;
+    this._config = next;
     this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    if (this._form) this._form.hass = hass;
+    else this._render();
   }
 
   _render() {
@@ -1712,9 +1743,10 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
         for (const [key, value] of Object.entries(ZONE_TIME_DEFAULTS)) {
           if (merged[key] === value) delete merged[key];
         }
+        this._config = merged;
         this.dispatchEvent(
           new CustomEvent("config-changed", {
-            detail: { config: merged },
+            detail: { config: { ...this._config } },
             bubbles: true,
             composed: true,
           })
