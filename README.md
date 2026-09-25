@@ -146,6 +146,36 @@ Abschnitt zwischen `BEGIN VENDOR` und `END VENDOR`.
 
 ## Geprüft
 
+### Kandidat 0.6.0 — 25.09.2026
+
+Die lokale Auslieferungsdatei wurde mit `node --check` geprüft; der statische
+UI-Prüfer meldet 0 Verstöße. Im Playwright-Container bestanden Timeline-Render,
+Verweildauer-Render, Editorvertrag (18 Prüfungen), gemeinsamer UI-Vertrag
+(14 Fälle, 0 Fehler) und Dialog-Stapeltest. Die frühere grafische Baseline
+liegt unter [`docs/visual-baselines/shared-ui-v0.1.0`](docs/visual-baselines/shared-ui-v0.1.0/README.md).
+
+Zusätzlich wurden **beide Karten und ihre nativen Editoren im laufenden Home
+Assistant** mit einem verborgenen Test-Dashboard und synthetischen Person-/
+Zonenhelfern geprüft. Der Browser ersetzte nur in dieser Sitzung die installierte
+Kartenressource durch die lokale 0.6.0-Datei; HACS wurde nicht aktualisiert.
+Bei 320/480/960 px in Hell und Dunkel gab es auf beiden Karten 0 gemessene
+Textüberläufe, Elemente außerhalb der Karte und Textkollisionen; die sichtbaren
+Aktionen waren mindestens 44 px groß. Beide echten `ha-form`-Editoren behielten
+den Fokus während schneller Texteingabe. Der Wechsel Visual → YAML → Visual,
+Speichern und Wiederöffnen erhielt die Konfiguration; HA lieferte `false` für
+`show_scrubber`/`show_gross` und `0` für `min_visit_minutes` zurück.
+Das Test-Dashboard und beide Helfer wurden danach gelöscht und ihr Fehlen
+über die HA-API bestätigt.
+
+Beide Editoren verwenden eine gemeinsame Config-, Formevent- und Tastaturbasis
+direkt in `dist/localtrack-cards.js`. Ein physisches Shared-Package über mehrere
+Repos würde einen Build-Schritt oder eine zusätzliche Laufzeitdatei verlangen;
+beides widerspricht der HACS-Auslieferungsregel für diese Karten.
+
+**Grenze:** Die Live-Karten zeigten synthetische Leerzustände ohne aufgezeichnete
+Route. Die vorhandenen Browser-Fixtures prüfen verfügbare Routen und Tageswerte;
+eine veröffentlichte und installierte 0.6.0 wurde noch nicht gemessen.
+
 Das Bild oben stammt aus `docs/render/render.py`: Die ausgelieferte Datei wird
 in echtem Chromium gerendert, `ha-card`/`ha-icon`/`ha-form` sind Attrappen, und
 `callWS` beantwortet `localtrack/history` mit einem erfundenen Tagesverlauf.

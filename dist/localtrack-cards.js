@@ -15,7 +15,7 @@
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.5.0";
+const CARD_VERSION = "0.6.0";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -1069,7 +1069,37 @@ function guardEditorKeys(editor) {
   editor.addEventListener("keyup", (event) => event.stopPropagation());
 }
 
-class LocaltrackTimelineCardEditor extends HTMLElement {
+function renderLocaltrackEditorForm(editor, schema, words, data, normalize) {
+  if (!editor._hass || !editor._config) return;
+  if (!editor._form) {
+    const form = document.createElement("ha-form");
+    form.schema = schema;
+    form.computeLabel = (field) => {
+      const translated = words[cardLanguage(editor._hass)];
+      return translated.labels[field.name] || field.name;
+    };
+    form.computeHelper = (field) => {
+      const translated = words[cardLanguage(editor._hass)];
+      return translated.helpers[field.name] || "";
+    };
+    form.addEventListener("value-changed", (event) => {
+      event.stopPropagation();
+      const merged = { ...editor._config, ...event.detail.value };
+      editor._config = cloneEditorConfig(normalize ? normalize(merged) : merged);
+      editor.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config: cloneEditorConfig(editor._config) },
+        bubbles: true,
+        composed: true,
+      }));
+    });
+    editor._form = form;
+    editor.appendChild(form);
+  }
+  editor._form.hass = editor._hass;
+  editor._form.data = cloneEditorConfig(data);
+}
+
+class LocaltrackCardEditor extends HTMLElement {
   constructor() {
     super();
     guardEditorKeys(this);
@@ -1087,38 +1117,14 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
     if (this._form) this._form.hass = hass;
     else this._render();
   }
+}
 
+class LocaltrackTimelineCardEditor extends LocaltrackCardEditor {
   _render() {
-    if (!this._hass || !this._config) return;
-    if (!this._form) {
-      this._form = document.createElement("ha-form");
-      this._form.schema = SCHEMA_LOCALTRACK_TIMELINE_CARD;
-      // Regel 3: jedes Feld hat Label UND Helper, in der Sprache von
-      // `hass.locale.language`. Der Rueckfall auf den Feldnamen bleibt, damit
-      // ein neues Schemafeld ohne Woerterbucheintrag sichtbar auffaellt.
-      this._form.computeLabel = (schema) => {
-        const w = TEXTE_LOCALTRACK_TIMELINE_CARD[cardLanguage(this._hass)];
-        return w.labels[schema.name] || schema.name;
-      };
-      this._form.computeHelper = (schema) => {
-        const w = TEXTE_LOCALTRACK_TIMELINE_CARD[cardLanguage(this._hass)];
-        return w.helpers[schema.name] || "";
-      };
-      this._form.addEventListener("value-changed", (event) => {
-        event.stopPropagation();
-        this._config = cloneEditorConfig({ ...this._config, ...event.detail.value });
-        this.dispatchEvent(
-          new CustomEvent("config-changed", {
-            detail: { config: cloneEditorConfig(this._config) },
-            bubbles: true,
-            composed: true,
-          })
-        );
-      });
-      this.appendChild(this._form);
-    }
-    this._form.hass = this._hass;
-    this._form.data = cloneEditorConfig(this._config);
+    renderLocaltrackEditorForm(
+      this, SCHEMA_LOCALTRACK_TIMELINE_CARD,
+      TEXTE_LOCALTRACK_TIMELINE_CARD, this._config
+    );
   }
 }
 
@@ -1772,61 +1778,20 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 }
 
-class LocaltrackZoneTimeCardEditor extends HTMLElement {
-  constructor() {
-    super();
-    guardEditorKeys(this);
+function omitZoneTimeEditorDefaults(config) {
+  for (const [key, value] of Object.entries(ZONE_TIME_DEFAULTS)) {
+    if (config[key] === value) delete config[key];
   }
+  return config;
+}
 
-  setConfig(config) {
-    const next = cloneEditorConfig(config || {});
-    if (sameEditorConfig(this._config, next)) return;
-    this._config = next;
-    this._render();
-  }
-
-  set hass(hass) {
-    this._hass = hass;
-    if (this._form) this._form.hass = hass;
-    else this._render();
-  }
-
+class LocaltrackZoneTimeCardEditor extends LocaltrackCardEditor {
   _render() {
-    if (!this._hass || !this._config) return;
-    if (!this._form) {
-      this._form = document.createElement("ha-form");
-      this._form.schema = SCHEMA_LOCALTRACK_ZONE_TIME_CARD;
-      // Regel 3: Label UND Helper je Feld, Sprache aus hass.locale.language.
-      this._form.computeLabel = (schema) => {
-        const w = TEXTE_LOCALTRACK_ZONE_TIME_CARD[cardLanguage(this._hass)];
-        return w.labels[schema.name] || schema.name;
-      };
-      this._form.computeHelper = (schema) => {
-        const w = TEXTE_LOCALTRACK_ZONE_TIME_CARD[cardLanguage(this._hass)];
-        return w.helpers[schema.name] || "";
-      };
-      this._form.addEventListener("value-changed", (event) => {
-        event.stopPropagation();
-        // Nur schreiben, was vom Standard abweicht. Sonst macht der Editor aus
-        // einer vierzeiligen Karte eine zehnzeilige, und wer später die
-        // Standardwerte ändert, erreicht die Bestandskarten nicht mehr.
-        const merged = { ...this._config, ...event.detail.value };
-        for (const [key, value] of Object.entries(ZONE_TIME_DEFAULTS)) {
-          if (merged[key] === value) delete merged[key];
-        }
-        this._config = cloneEditorConfig(merged);
-        this.dispatchEvent(
-          new CustomEvent("config-changed", {
-            detail: { config: cloneEditorConfig(this._config) },
-            bubbles: true,
-            composed: true,
-          })
-        );
-      });
-      this.appendChild(this._form);
-    }
-    this._form.hass = this._hass;
-    this._form.data = cloneEditorConfig({ ...ZONE_TIME_DEFAULTS, ...this._config });
+    // Vorgaben nur anzeigen; beim Speichern nur Abweichungen persistieren.
+    renderLocaltrackEditorForm(
+      this, SCHEMA_LOCALTRACK_ZONE_TIME_CARD, TEXTE_LOCALTRACK_ZONE_TIME_CARD,
+      { ...ZONE_TIME_DEFAULTS, ...this._config }, omitZoneTimeEditorDefaults
+    );
   }
 }
 
