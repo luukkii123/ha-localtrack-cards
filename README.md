@@ -52,7 +52,9 @@ Manuell: `dist/localtrack-cards.js` nach `<config>/www/localtrack-cards.js`
 kopieren und unter Einstellungen → Dashboards → ⋮ → **Ressourcen** eintragen:
 `/local/localtrack-cards.js`, Typ **JavaScript-Modul**.
 
-Voraussetzung: Home Assistant **2024.11.0** oder neuer.
+Voraussetzung für Version 0.6.0: Home Assistant **2026.9.3** oder neuer.
+Die neuen Karten und Editoren wurden nativ nur mit 2026.9.3 geprüft;
+für frühere HA-Versionen liegt kein Kompatibilitätsnachweis dieser Version vor.
 
 ```yaml
 type: custom:localtrack-timeline-card
@@ -147,6 +149,11 @@ Abschnitt zwischen `BEGIN VENDOR` und `END VENDOR`.
 ## Geprüft
 
 ### Kandidat 0.6.0 — 25.09.2026
+
+**HA-Kompatibilität:** HACS verlangt für diesen Kandidaten mindestens
+Home Assistant 2026.9.3. Die unten beschriebene native Prüfung lief auf
+genau dieser Version. Spätere HA-Versionen sind durch diese Prüfung nicht
+automatisch abgedeckt.
 
 Die lokale Auslieferungsdatei wurde mit `node --check` geprüft; der statische
 UI-Prüfer meldet 0 Verstöße. Im Playwright-Container bestanden Timeline-Render,
