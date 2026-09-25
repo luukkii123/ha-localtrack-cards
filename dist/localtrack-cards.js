@@ -485,6 +485,15 @@ reverseGeocode._cache = new Map();
 
 /* ── the card ───────────────────────────────────────────────────────────── */
 
+const LOCALTRACK_SHARED_UI_STYLES = `
+  /* Busch HA UI 0.1.0 — embedded in each card, no runtime dependency. */
+  :host { container-type: inline-size; }
+  :is(button, select, input, .segment, .leaflet-control-zoom a):focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+`;
+
 class LocaltrackTimelineCard extends HTMLElement {
   static getConfigElement() {
     return document.createElement("localtrack-timeline-card-editor");
@@ -599,6 +608,7 @@ class LocaltrackTimelineCard extends HTMLElement {
   _build() {
     this.shadowRoot.innerHTML = `
       <style>
+        ${LOCALTRACK_SHARED_UI_STYLES}
         /* position + z-index make the host its own stacking context, and that
            is the whole point: Leaflet paints its controls at z-index 1000 and
            its panes at 400-700. Without a stacking context here those numbers
@@ -625,12 +635,21 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .controls { display: flex; gap: var(--ha-space-2, 8px); align-items: center; flex: 0 0 auto; }
         .controls input[type="date"] {
+          box-sizing: border-box; min-height: 44px;
           font: inherit; font-size: var(--ha-font-size-s, 0.9em); max-width: 100%;
           color: var(--primary-text-color); background: var(--card-background-color, #fff);
-          border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px; padding: 2px 4px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: var(--ha-card-border-radius, 8px); padding: var(--ha-space-2, 8px);
+        }
+        @container (max-width: 440px) {
+          .header { display: grid; grid-template-columns: minmax(0, 1fr); }
+          .controls, .controls input[type="date"] { width: 100%; }
         }
         .map-wrap { position: relative; border-radius: var(--ha-card-border-radius, 8px); overflow: hidden; }
         .map { width: 100%; height: 320px; background: var(--secondary-background-color, #dde5ec); }
+        .map.leaflet-container .leaflet-control-zoom a {
+          box-sizing: border-box; width: 44px; height: 44px; line-height: 44px;
+        }
         /* Lade- und Fehlerbox INNERHALB der Karte, kein Popup: kein
            Schliessknopf, kein Verlaufseintrag, sie ersetzt die Karte nicht.
            Der Container hat overflow: hidden und sein Mass haengt nicht am
@@ -653,7 +672,7 @@ class LocaltrackTimelineCard extends HTMLElement {
           display: flex; gap: var(--ha-space-2, 8px); align-items: center;
           margin-top: var(--ha-space-2, 8px);
         }
-        .scrubber input[type="range"] { flex: 1 1 auto; min-width: 0; }
+        .scrubber input[type="range"] { flex: 1 1 auto; min-width: 0; min-height: 44px; }
         .scrubber .scrub-label {
           flex: 0 1 auto; min-width: 0; max-width: 60%; text-align: right;
           font-size: var(--ha-font-size-s, 0.85em); color: var(--secondary-text-color);
@@ -665,7 +684,9 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .segment {
           display: flex; align-items: center; gap: var(--ha-space-2, 8px);
-          padding: 6px var(--ha-space-2, 8px); border-radius: 6px; cursor: pointer;
+          box-sizing: border-box; min-height: 44px;
+          padding: var(--ha-space-2, 8px); border-radius: var(--ha-card-border-radius, 8px);
+          cursor: pointer;
           background: var(--secondary-background-color, #f1f1f1); min-width: 0;
         }
         .segment:hover { background: var(--divider-color, #e0e0e0); }
@@ -673,7 +694,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         .segment.stay .dot { background: var(--success-color, #4caf50); }
         .segment.move .dot { background: var(--primary-color, #03a9f4); }
         .segment .times {
-          font-weight: var(--ha-font-weight-medium, 600); flex: 0 1 auto; min-width: 0;
+          font-weight: var(--ha-font-weight-medium, 600); flex: 0 0 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .segment .label {
@@ -682,7 +703,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .segment .meta {
           color: var(--secondary-text-color, #777); font-size: var(--ha-font-size-s, 0.85em);
-          flex: 0 1 auto; min-width: 0;
+          flex: 0 0 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
       </style>
@@ -736,6 +757,13 @@ class LocaltrackTimelineCard extends HTMLElement {
       const point = this._points[segment.startIndex] || this._points[0];
       if (point) this._map.panTo([point.lat, point.lon]);
     });
+    this._segmentsEl.addEventListener("keydown", (event) => {
+      const row = event.target.closest(".segment");
+      if (row && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        row.click();
+      }
+    });
   }
 
   async _loadDay() {
@@ -743,6 +771,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._loading) return;
     this._loading = true;
     const day = this._day;
+    this._clearDayDetails();
     this._showStatus(this._t.laden);
     try {
       await this._ensureMap();
@@ -756,6 +785,9 @@ class LocaltrackTimelineCard extends HTMLElement {
       });
       if (this._day !== day) return; // user changed the date mid-flight
       this._points = result.points || [];
+      this._scrubberEl.disabled = this._points.length === 0;
+      this._scrubberEl.closest(".scrubber").style.display =
+        this._points.length && this._config.show_scrubber !== false ? "" : "none";
       this._segments = computeSegments(
         this._points,
         Number(this._config.stay_radius_m) || 150,
@@ -774,6 +806,15 @@ class LocaltrackTimelineCard extends HTMLElement {
     } finally {
       this._loading = false;
     }
+  }
+
+  _clearDayDetails() {
+    this._segmentsEl.innerHTML = "";
+    this._scrubLabelEl.textContent = "";
+    this._scrubberEl.value = "0";
+    this._scrubberEl.max = "0";
+    this._scrubberEl.disabled = true;
+    this._scrubberEl.closest(".scrubber").style.display = "none";
   }
 
   /** Static labels that are not part of the data: they change with the
@@ -978,7 +1019,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         meta = fillText(t.km, { wert: (segment.distance / 1000).toFixed(1) });
       }
       rows.push(
-        `<div class="segment ${segment.kind}" data-index="${i}">
+        `<div class="segment ${segment.kind}" data-index="${i}" role="button" tabindex="0">
           <div class="dot"></div>
           <div class="times">${times}</div>
           <div class="label">${label}</div>
@@ -1254,6 +1295,7 @@ const ZONE_TIME_DEFAULTS = {
 };
 
 const ZONE_TIME_STYLES = `
+  ${LOCALTRACK_SHARED_UI_STYLES}
   /* position + z-index machen den Host zu einem eigenen Stapelkontext.
      Diese Karte enthält zwar kein Leaflet, aber die Lehre aus v0.1.2 gilt
      allgemein: was hier drin an z-index vergeben wird, soll hier drin
@@ -1271,16 +1313,25 @@ const ZONE_TIME_STYLES = `
   }
   .pickers { display: flex; gap: var(--ha-space-2, 8px); flex-wrap: wrap; }
   .pickers select {
-    flex: 1 1 8em; min-width: 0; padding: 4px 6px; font: inherit;
+    flex: 1 1 8em; min-width: 0; box-sizing: border-box; min-height: 44px;
+    padding: var(--ha-space-2, 8px); font: inherit;
     font-size: var(--ha-font-size-s, 0.9em);
     color: var(--primary-text-color); background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: var(--ha-card-border-radius, 8px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .month { display: flex; align-items: center; justify-content: center; gap: var(--ha-space-3, 12px); }
+  .month {
+    display: flex; align-items: center; justify-content: center;
+    gap: var(--ha-space-3, 12px); width: 100%; max-width: 440px;
+    margin-inline: auto;
+  }
   .month button {
+    display: inline-flex; align-items: center; justify-content: center;
+    box-sizing: border-box; width: 44px; min-height: 44px;
     border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
-    padding: 2px 10px; border-radius: 6px; color: var(--primary-text-color); flex: 0 0 auto;
+    border-radius: var(--ha-card-border-radius, 8px);
+    color: var(--primary-text-color); flex: 0 0 auto;
   }
   .month button:hover { background: var(--secondary-background-color, #e5e5e5); }
   .month .label {
@@ -1297,6 +1348,7 @@ const ZONE_TIME_STYLES = `
     width: 100%; table-layout: fixed; border-collapse: collapse;
     font-variant-numeric: tabular-nums;
   }
+  table[hidden] { display: none; }
   /* Alle vier Kuerzungseigenschaften, auch min-width: 0 — Regel 1 verlangt sie
      an jedem einzeiligen Textcontainer. In einer Tabellenzelle wirkt min-width
      nicht (das Tabellenlayout bestimmt die Breite), aber die Regel ist
@@ -1587,6 +1639,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const wanted = { ...this._month, entity: this._entity, zone: this._zone };
     const t = this._t;
     this._labelEl.textContent = `${t.monate[this._month.month - 1]} ${this._month.year}`;
+    this._bodyEl.innerHTML = "";
+    this._footEl.innerHTML = "";
+    this._noteEl.textContent = "";
+    this._tableEl.hidden = true;
     this._showStatus(t.laden);
     try {
       await this._loadTracked();
@@ -1693,6 +1749,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._bodyEl.innerHTML = rows.join("");
 
     const present = this._result.days_present || 0;
+    this._tableEl.hidden = present === 0;
     const average = present ? this._result.total_net_s / present : 0;
     this._footEl.innerHTML = `
       <tr>
@@ -1785,4 +1842,3 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });
-

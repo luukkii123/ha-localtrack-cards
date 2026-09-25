@@ -88,8 +88,8 @@ tile_url: ""            # leer = OpenStreetMap, sonst eigener Kachelserver
 - **Zeit-Scrubber** unter der Karte: entlang der Route fahren, daneben stehen
   Uhrzeit und Zone (oder „unterwegs").
 - **Aufenthalte** und **Strecken** erscheinen als Liste unter der Karte, mit
-  Zeitspanne und Dauer bzw. Länge in Kilometern. Ein Klick zentriert die Karte
-  darauf.
+  Zeitspanne und Dauer bzw. Länge in Kilometern. Ein Klick oder Enter/Leertaste
+  zentriert die Karte darauf.
 - Start (grün) und Ende (rot) sind markiert, Aufenthalte als nummerierte Pins in
   der Reihenfolge des Tages.
 
@@ -226,6 +226,31 @@ DE/EN-Label und Helper anhand der aktuellen HA-Sprache, ergänzt die
 Verweildauer-Vorgaben nur in der Anzeige und lässt die dynamischen
 `getStubConfig`-Vorschläge für Person und Zone bestehen. Für eine Umstellung
 fehlt ein Gleichwertigkeitsbeleg für diese Funktionen im echten HA-Frontend.
+
+### Gemeinsamer UI-Vertrag 0.1.0 — 25.09.2026
+
+Beide Karten tragen die benötigten Primitives aus **Busch HA UI 0.1.0** direkt
+in der ausgelieferten JS-Datei. Es gibt keine zusätzliche Laufzeitdatei und
+keinen Build-Schritt. Titel und Bedienelemente ordnen sich nach der
+Kartenbreite; Aktionen und Tastaturfokus bleiben auch in schmalen Spalten
+erreichbar. Lade-, Leer- und Fehlerzustände entfernen veraltete Tagesdetails.
+
+`docs/render/shared_ui_contract.py` prüft beide Karten und die Editor-Schemas
+bei 320, 480 und 960 px in Hell und Dunkel. Der Lauf umfasst lange Namen,
+Lade-, Leer-, Fehler- und fehlende Datenzustände, sichtbaren Text, Kollisionen,
+44-px-Aktionsflächen, Tastaturfokus und echte Zustandswechsel. Die akzeptierten
+[visuellen Baselines](docs/visual-baselines/shared-ui-v0.1.0/README.md) zeigen
+nur synthetische Testdaten. Der Editor wird mit einer `ha-form`-Attrappe
+visualisiert; die Darstellung im echten Home Assistant bleibt offen.
+
+```bash
+docker run --rm \
+  -v "/mnt/user/Data/Claude Projekte/hacs/docs/render:/work" \
+  -v "/mnt/user/Data/Claude Projekte/hacs/ha-localtrack-cards:/cards" \
+  --entrypoint bash mcr.microsoft.com/playwright/python:v1.62.0-noble \
+  -c 'pip install --quiet --break-system-packages playwright==1.62.0 >/dev/null; \
+      python3 /cards/docs/render/shared_ui_contract.py'
+```
 
 ## Herkunft
 
