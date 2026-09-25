@@ -39,29 +39,35 @@ def probe(page, tag, initial, first, second, expected):
     return page.evaluate("""({tag, initial, first, second, expected}) => {
       const editor = document.createElement(tag);
       document.body.appendChild(editor);
-      const source = Object.freeze({...initial});
+      const source = structuredClone(initial);
       editor.setConfig(source);
       editor.hass = {locale: {language: 'de'}};
       const form = editor.querySelector('ha-form');
       const input = form.shadowRoot.querySelector('input');
       input.focus();
-      const initialWrites = form.writes;
-      editor.setConfig({...initial});
-      editor.hass = {locale: {language: 'de'}};
-      const sameConfigPreservesFocus = document.activeElement === form
-        && form.shadowRoot.activeElement === input
-        && form.writes === initialWrites;
+      const sourceUnchanged = JSON.stringify(source) === JSON.stringify(initial);
+      source.extra.options.tags[0] = 'source mutation';
 
       const events = [];
       editor.addEventListener('config-changed', event => events.push(event.detail.config));
       form.fire(first);
+      const incomingIsolated = events[0].extra.options.tags[0] === 'original';
+      events[0].extra.options.tags[0] = 'event mutation';
       form.fire(second);
+      const emittedIsolated = events[1].extra.options.tags[0] === 'original';
       const immediate = events.length === 2
-        && Object.entries(expected).every(([key, value]) => events[1][key] === value);
-      const sourceUnchanged = Object.entries(initial)
-        .every(([key, value]) => source[key] === value);
+        && Object.entries(expected).every(([key, value]) =>
+          JSON.stringify(events[1][key]) === JSON.stringify(value));
+
+      input.focus();
+      const initialWrites = form.writes;
+      editor.setConfig(structuredClone(events[1]));
+      editor.hass = {locale: {language: 'de'}};
+      const sameConfigPreservesFocus = document.activeElement === form
+        && form.shadowRoot.activeElement === input
+        && form.writes === initialWrites;
       const beforeEcho = form.writes;
-      editor.setConfig({...events[1]});
+      editor.setConfig(structuredClone(events[1]));
       const echoPreservesFocus = form.writes === beforeEcho
         && form.shadowRoot.activeElement === input;
 
@@ -84,6 +90,7 @@ def probe(page, tag, initial, first, second, expected):
         && form.data.title === 'Extern geändert';
       editor.remove();
       return {sameConfigPreservesFocus, immediate, sourceUnchanged,
+              incomingIsolated, emittedIsolated,
               echoPreservesFocus, localKeysOnly: documentKeys === 1,
               nativeKeysUnaffected: !down.defaultPrevented && !up.defaultPrevented,
               externalConfigApplied, events};
@@ -97,16 +104,19 @@ with sync_playwright() as pw:
     page.add_script_tag(path=str(SOURCE))
     cases = [
         ("localtrack-timeline-card-editor",
-         {"type": "custom:localtrack-timeline-card", "entity": "person.test"},
+         {"type": "custom:localtrack-timeline-card", "entity": "person.test",
+          "extra": {"options": {"tags": ["original", 0, False]}}},
          {"title": "Erster Titel"}, {"show_scrubber": False, "max_points": 0},
          {"type": "custom:localtrack-timeline-card", "entity": "person.test",
+          "extra": {"options": {"tags": ["original", 0, False]}},
           "title": "Erster Titel", "show_scrubber": False, "max_points": 0}),
         ("localtrack-zone-time-card-editor",
          {"type": "custom:localtrack-zone-time-card", "entity": "person.test",
-          "zone": "zone.work"},
+          "zone": "zone.work", "extra": {"options": {"tags": ["original", 0, False]}}},
          {"title": "Erster Titel"}, {"min_visit_minutes": 0, "show_gross": False},
          {"type": "custom:localtrack-zone-time-card", "entity": "person.test",
           "zone": "zone.work", "title": "Erster Titel",
+          "extra": {"options": {"tags": ["original", 0, False]}},
           "min_visit_minutes": 0, "show_gross": False}),
     ]
     failed = []
@@ -118,4 +128,4 @@ with sync_playwright() as pw:
     browser.close()
     if failed:
         raise AssertionError("\n".join(failed))
-    print(f"Editor contracts: {len(cases)} editors, 14 checks passed")
+    print(f"Editor contracts: {len(cases)} editors, 18 checks passed")

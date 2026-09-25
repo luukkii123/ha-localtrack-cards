@@ -216,9 +216,10 @@ Helper anzeigt, entscheidet erst der Live-Test.
 `docs/render/editor_contract.py` prüft beide ausgelieferten Editoren im Browser:
 `setConfig` bleibt bei gleichen Werten ohne erneutes Form-Update, schnelle
 Feldänderungen liefern sofort eine vollständige Konfiguration, `0` und `false`
-bleiben erhalten, und `keydown`/`keyup` verlassen den Editor nicht, ohne die
-native Eingabe abzubrechen. Die bestehenden Renderläufe prüfen weiterhin
-320/480/960 px in Hell und Dunkel für beide Karten.
+bleiben erhalten, und verschachtelte Zusatzwerte sind gegen Änderungen am
+Eingabeobjekt und am Ereignisinhalt isoliert. `keydown`/`keyup` verlassen den
+Editor nicht, ohne die native Eingabe abzubrechen. Die Renderläufe prüfen
+weiterhin 320/480/960 px in Hell und Dunkel für beide Karten.
 
 `getConfigForm` wird hier nicht verwendet: Der bestehende Editor liefert
 DE/EN-Label und Helper anhand der aktuellen HA-Sprache, ergänzt die

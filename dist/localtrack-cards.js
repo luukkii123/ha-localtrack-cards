@@ -1001,10 +1001,24 @@ class LocaltrackTimelineCard extends HTMLElement {
 }
 
 function sameEditorConfig(left, right) {
-  if (!left) return false;
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameEditorConfig(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
   const keys = Object.keys(left);
   return keys.length === Object.keys(right).length
-    && keys.every((key) => Object.hasOwn(right, key) && left[key] === right[key]);
+    && keys.every((key) => Object.hasOwn(right, key) && sameEditorConfig(left[key], right[key]));
+}
+
+function cloneEditorConfig(value) {
+  if (Array.isArray(value)) return value.map(cloneEditorConfig);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneEditorConfig(item)]));
+  }
+  return value;
 }
 
 function guardEditorKeys(editor) {
@@ -1021,7 +1035,7 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    const next = { ...(config || {}) };
+    const next = cloneEditorConfig(config || {});
     if (sameEditorConfig(this._config, next)) return;
     this._config = next;
     this._render();
@@ -1051,10 +1065,10 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
       };
       this._form.addEventListener("value-changed", (event) => {
         event.stopPropagation();
-        this._config = { ...this._config, ...event.detail.value };
+        this._config = cloneEditorConfig({ ...this._config, ...event.detail.value });
         this.dispatchEvent(
           new CustomEvent("config-changed", {
-            detail: { config: { ...this._config } },
+            detail: { config: cloneEditorConfig(this._config) },
             bubbles: true,
             composed: true,
           })
@@ -1063,7 +1077,7 @@ class LocaltrackTimelineCardEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
-    this._form.data = this._config;
+    this._form.data = cloneEditorConfig(this._config);
   }
 }
 
@@ -1708,7 +1722,7 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    const next = { ...(config || {}) };
+    const next = cloneEditorConfig(config || {});
     if (sameEditorConfig(this._config, next)) return;
     this._config = next;
     this._render();
@@ -1743,10 +1757,10 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
         for (const [key, value] of Object.entries(ZONE_TIME_DEFAULTS)) {
           if (merged[key] === value) delete merged[key];
         }
-        this._config = merged;
+        this._config = cloneEditorConfig(merged);
         this.dispatchEvent(
           new CustomEvent("config-changed", {
-            detail: { config: { ...this._config } },
+            detail: { config: cloneEditorConfig(this._config) },
             bubbles: true,
             composed: true,
           })
@@ -1755,7 +1769,7 @@ class LocaltrackZoneTimeCardEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
-    this._form.data = { ...ZONE_TIME_DEFAULTS, ...this._config };
+    this._form.data = cloneEditorConfig({ ...ZONE_TIME_DEFAULTS, ...this._config });
   }
 }
 
