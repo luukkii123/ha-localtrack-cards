@@ -1,3 +1,132 @@
+/* BEGIN BUSCH SHARED UI 0.2.0 sha256:31637c8f3ea97a0a56d0de9264e5991aedd7ea0d7c3c747d08afff93fcc4e492 */
+/** Busch UI 0.2.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+const BuschUI = (() => {
+  const sourceVersion = '0.2.0';
+  const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
+  function configsEqual(a,b) {
+    if (Object.is(a,b)) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a)!==Array.isArray(b)) return false;
+    if (Array.isArray(a) && a.length!==b.length) return false;
+    const keys=Object.keys(a);
+    return keys.length===Object.keys(b).length && keys.every(key=>Object.hasOwn(b,key)&&configsEqual(a[key],b[key]));
+  }
+  const validKey = key => !['__proto__','prototype','constructor'].includes(String(key));
+  function updateConfig(config,patch) {
+    const next=cloneConfig(config||{});
+    for (const [key,value] of Object.entries(patch||{})) {
+      if (!validKey(key)) throw new Error('Invalid editor config key');
+      if (value===undefined) delete next[key]; else next[key]=cloneConfig(value);
+    }
+    return next;
+  }
+  function updateConfigPath(config,path,value) {
+    const parts=Array.isArray(path)?path:String(path).split('.');
+    if (!parts.length || parts.some(key=>!String(key)||!validKey(key))) throw new Error('Invalid editor config path');
+    const next=cloneConfig(config||{});let node=next;
+    for (let i=0;i<parts.length-1;i++) {const key=parts[i];if (!Object.hasOwn(node,key)||!node[key]||typeof node[key]!=='object') node[key]=typeof parts[i+1]==='number'?[]:{};node=node[key];}
+    const key=parts.at(-1);
+    if (value===undefined) {if (Array.isArray(node)&&typeof key==='number') node.splice(key,1);else delete node[key];} else node[key]=cloneConfig(value);
+    return next;
+  }
+  const deleteConfigPath=(config,path)=>updateConfigPath(config,path,undefined);
+  function emitConfigChanged(editor,config) {
+    editor.dispatchEvent(new CustomEvent('config-changed',{detail:{config:cloneConfig(config)},bubbles:true,composed:true}));
+  }
+  function guardEditorKeys(root) {
+    root.addEventListener?.('keydown',event=>event.stopPropagation());
+    root.addEventListener?.('keyup',event=>event.stopPropagation());
+  }
+  class EditorBase extends (typeof HTMLElement==='undefined'?class{}:HTMLElement) {
+    constructor() {super();guardEditorKeys(this);}
+    _acceptConfig(config,normalize=cloneConfig) {
+      const next=cloneConfig(normalize(config));
+      if (configsEqual(next,this._config)) return false;
+      this._config=next;return true;
+    }
+    _publishConfig(config) {
+      const next=cloneConfig(config);this._config=next;emitConfigChanged(this,next);return next;
+    }
+  }
+  // HA supplies no echo ID: match the earliest unacknowledged equal snapshot.
+  const createEchoState=()=>({pending:[],received:new Set(),stale:[]});
+  function queueEcho(state,config) {state.pending.push(cloneConfig(config));}
+  function acceptEcho(state,next,current) {
+    const pending=state.pending.findIndex(value=>!state.received.has(value)&&configsEqual(value,next));
+    if (pending!==-1) {
+      if (pending<state.pending.length-1) {state.received.add(state.pending[pending]);return false;}
+      state.stale.push(...state.pending.slice(0,-1).filter(value=>!state.received.has(value)));
+      state.pending=[];state.received.clear();
+    } else {
+      if (configsEqual(current,next)||state.pending.some(value=>state.received.has(value)&&configsEqual(value,next))) return false;
+      const stale=state.stale.findIndex(value=>configsEqual(value,next));
+      if (stale!==-1) {state.stale.splice(stale,1);return false;}
+      state.pending=[];state.received.clear();state.stale=[];
+    }
+    return !configsEqual(current,next);
+  }
+  function resolveMedia(config={},metadata={},defaultIcon='mdi:devices') {
+    const safe=value=>typeof value==='string'&&value.trim()&&!/^(?:javascript|vbscript|file):/i.test(value.trim())?value.trim():null;
+    const available=[metadata.entity_picture,metadata.device_picture,metadata.picture].map(safe).filter(Boolean),custom=safe(config.image),mode=config.display_mode||'auto';
+    const images=mode==='icon'?[]:[...new Set((mode==='image'?[custom,...available]:[...available,custom]).filter(Boolean))];
+    return {image:images[0]||null,images,icon:config.icon||metadata.icon||defaultIcon};
+  }
+  function media(config,metadata,defaultIcon,className='card-icon') {
+    const resolved=resolveMedia(config,metadata,defaultIcon),holder=document.createElement('span');
+    holder.className='busch-media '+className;holder.setAttribute('aria-hidden','true');let index=0;
+    const next=()=>{
+      if (index>=resolved.images.length) {const icon=ha.icon(resolved.icon);holder.replaceChildren(icon);return;}
+      const img=document.createElement('img');img.setAttribute('src',resolved.images[index++]);img.setAttribute('alt','');img.setAttribute('loading','lazy');
+      img.addEventListener('error',next,{once:true});holder.replaceChildren(img);
+    };
+    next();return holder;
+  }
+  function statusSemantic(status) {
+    return ({success:'success',running:'success',online:'success',connected:'success',on:'success',idle:'warning',warning:'warning',partial:'warning',starting:'warning',stopping:'warning',paused:'warning',blocked:'warning',suspended:'warning',error:'error',failed:'error',neutral:'neutral',stopped:'neutral',offline:'neutral',disconnected:'neutral',off:'neutral',unavailable:'unavailable',unknown:'unknown'})[status]||'unknown';
+  }
+  function statusBadge(status,text,classPrefix='status-') {
+    const badge=document.createElement('span');badge.className='status-badge '+classPrefix+statusSemantic(status);badge.textContent=text;return badge;
+  }
+  function formatNumber(value,locale,options={maximumFractionDigits:1}) {
+    return !['number','string'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(Number(value))?null:new Intl.NumberFormat(locale||'en',options).format(Number(value));
+  }
+  function metric(label,value,ratio) {
+    const node=document.createElement('div');node.className='metric';
+    const caption=document.createElement('span');caption.className='metric-label';caption.textContent=label;
+    const text=document.createElement('strong');text.className='metric-value';text.textContent=value;node.appendChild(caption);node.appendChild(text);
+    if (ratio!==undefined&&Number.isFinite(ratio)) {const bar=document.createElement('progress');bar.max=100;bar.value=Math.min(100,Math.max(0,ratio*100));bar.setAttribute('aria-label',label);node.appendChild(bar);}return node;
+  }
+  let helperPromise=null;
+  const ha = {
+    form() {
+      const form=document.createElement('ha-form');
+      // HA lazy-loads ha-form. Retain its real selector contract and replay
+      // properties after upgrade; a free-text replacement would lose selectors.
+      if (typeof customElements!=='undefined' && customElements.get && !customElements.get('ha-form') && customElements.whenDefined) {
+        customElements.whenDefined('ha-form').then(()=>{
+          const props=['hass','schema','data','computeLabel','computeHelper','computeError','disabled'].filter(key=>Object.hasOwn(form,key)).map(key=>[key,form[key]]);
+          for (const [key] of props) delete form[key];
+          customElements.upgrade?.(form);
+          for (const [key,value] of props) form[key]=value;
+        });
+      }
+      return form;
+    },
+    input({native=false}={}) {return document.createElement(!native&&typeof customElements!=='undefined'&&customElements.get?.('ha-input')?'ha-input':'input');},
+    icon(name) {const icon=document.createElement('ha-icon');icon.setAttribute('icon',name);return icon;},
+    async cardHelpers() {
+      if (helperPromise) return helperPromise;
+      if (typeof window==='undefined'||typeof window.loadCardHelpers!=='function') return null;
+      helperPromise=Promise.resolve().then(()=>window.loadCardHelpers()).then(helpers=>helpers&&typeof helpers.createCardElement==='function'?helpers:null).catch(()=>null);
+      const helpers=await helperPromise;if (!helpers) helperPromise=null;return helpers;
+    },
+  };
+  const tokens=Object.freeze({space1:'var(--ha-space-1, 4px)',space2:'var(--ha-space-2, 8px)',space3:'var(--ha-space-3, 12px)',space4:'var(--ha-space-4, 16px)',mediaRadius:'var(--ha-card-border-radius, 12px)',controlMinHeight:'44px'});
+  const language=hass=>String(hass?.locale?.language||(typeof navigator!=='undefined'?navigator.language:'en')).startsWith('de')?'de':'en';
+  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language});
+})();
+/* END BUSCH SHARED UI */
+
 /**
  * Local Track Cards — Lovelace-Karten für Home Assistant.
  *
@@ -633,7 +762,7 @@ class LocaltrackTimelineCard extends HTMLElement {
           flex: 1 1 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .controls { display: flex; gap: var(--ha-space-2, 8px); align-items: center; flex: 0 0 auto; }
+        .controls { display: flex; gap: ${BuschUI.tokens.space2}; align-items: center; flex: 0 0 auto; }
         .controls input[type="date"] {
           box-sizing: border-box; min-height: 44px;
           font: inherit; font-size: var(--ha-font-size-s, 0.9em); max-width: 100%;
@@ -669,7 +798,7 @@ class LocaltrackTimelineCard extends HTMLElement {
            schneiden). Gemessen gefunden, nicht vermutet. */
         .map-wrap.busy .leaflet-control-container { visibility: hidden; }
         .scrubber {
-          display: flex; gap: var(--ha-space-2, 8px); align-items: center;
+          display: flex; gap: ${BuschUI.tokens.space2}; align-items: center;
           margin-top: var(--ha-space-2, 8px);
         }
         .scrubber input[type="range"] { flex: 1 1 auto; min-width: 0; min-height: 44px; }
@@ -1016,7 +1145,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         meta = formatDuration(segment.end - segment.start, t);
       } else {
         label = t.strecke;
-        meta = fillText(t.km, { wert: (segment.distance / 1000).toFixed(1) });
+        meta = fillText(t.km, { wert: BuschUI.formatNumber(segment.distance/1000,'en',{useGrouping:false,minimumFractionDigits:1,maximumFractionDigits:1}) });
       }
       rows.push(
         `<div class="segment ${segment.kind}" data-index="${i}" role="button" tabindex="0">
@@ -1041,38 +1170,16 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 }
 
-function sameEditorConfig(left, right) {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => sameEditorConfig(value, right[index]));
-  }
-  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
-  const keys = Object.keys(left);
-  return keys.length === Object.keys(right).length
-    && keys.every((key) => Object.hasOwn(right, key) && sameEditorConfig(left[key], right[key]));
-}
+function sameEditorConfig(left,right){return BuschUI.configsEqual(left,right);}
 
-function cloneEditorConfig(value) {
-  if (Array.isArray(value)) return value.map(cloneEditorConfig);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneEditorConfig(item)]));
-  }
-  return value;
-}
+function cloneEditorConfig(value){return BuschUI.cloneConfig(value);}
 
-function guardEditorKeys(editor) {
-  // Let ha-form handle typing first, then keep HA's dashboard shortcuts out.
-  // Stopping bubbling does not cancel the input's native key behavior.
-  editor.addEventListener("keydown", (event) => event.stopPropagation());
-  editor.addEventListener("keyup", (event) => event.stopPropagation());
-}
+function guardEditorKeys(editor){BuschUI.guardEditorKeys(editor);}
 
 function renderLocaltrackEditorForm(editor, schema, words, data, normalize) {
   if (!editor._hass || !editor._config) return;
   if (!editor._form) {
-    const form = document.createElement("ha-form");
+    const form = BuschUI.ha.form();
     form.schema = schema;
     form.computeLabel = (field) => {
       const translated = words[cardLanguage(editor._hass)];
@@ -1086,11 +1193,7 @@ function renderLocaltrackEditorForm(editor, schema, words, data, normalize) {
       event.stopPropagation();
       const merged = { ...editor._config, ...event.detail.value };
       editor._config = cloneEditorConfig(normalize ? normalize(merged) : merged);
-      editor.dispatchEvent(new CustomEvent("config-changed", {
-        detail: { config: cloneEditorConfig(editor._config) },
-        bubbles: true,
-        composed: true,
-      }));
+      BuschUI.emitConfigChanged(editor,editor._config);
     });
     editor._form = form;
     editor.appendChild(form);
@@ -1099,10 +1202,9 @@ function renderLocaltrackEditorForm(editor, schema, words, data, normalize) {
   editor._form.data = cloneEditorConfig(data);
 }
 
-class LocaltrackCardEditor extends HTMLElement {
+class LocaltrackCardEditor extends BuschUI.EditorBase {
   constructor() {
     super();
-    guardEditorKeys(this);
   }
 
   setConfig(config) {
@@ -1711,6 +1813,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     if (!this._statusEl) return;
     this._statusEl.textContent = text;
     this._statusEl.hidden = !text;
+    this._statusEl.dataset.tone = BuschUI.statusSemantic(this._loading ? "starting" : text ? "failed" : "stopped");
   }
 
   /* ── Darstellung ────────────────────────────────────────────────────── */
