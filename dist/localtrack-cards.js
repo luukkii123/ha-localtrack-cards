@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.2.0 sha256:31637c8f3ea97a0a56d0de9264e5991aedd7ea0d7c3c747d08afff93fcc4e492 */
-/** Busch UI 0.2.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.3.0 sha256:0bd2486252eeba30468ee5e6dd5ac30594562f69457f8bf89a4ebf7b25cfd297 */
+/** Busch UI 0.3.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.2.0';
+  const sourceVersion = '0.3.0';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -40,7 +40,9 @@ const BuschUI = (() => {
   class EditorBase extends (typeof HTMLElement==='undefined'?class{}:HTMLElement) {
     constructor() {super();guardEditorKeys(this);}
     _acceptConfig(config,normalize=cloneConfig) {
-      const next=cloneConfig(normalize(config));
+      const result=validateConfig(config,{normalize});
+      if(!result.ok)throw result.error;
+      const next=result.value;
       if (configsEqual(next,this._config)) return false;
       this._config=next;return true;
     }
@@ -114,16 +116,82 @@ const BuschUI = (() => {
     },
     input({native=false}={}) {return document.createElement(!native&&typeof customElements!=='undefined'&&customElements.get?.('ha-input')?'ha-input':'input');},
     icon(name) {const icon=document.createElement('ha-icon');icon.setAttribute('icon',name);return icon;},
-    async cardHelpers() {
-      if (helperPromise) return helperPromise;
+    async cardHelpers({requireRow=false}={}) {
+      if (!helperPromise) {
       if (typeof window==='undefined'||typeof window.loadCardHelpers!=='function') return null;
       helperPromise=Promise.resolve().then(()=>window.loadCardHelpers()).then(helpers=>helpers&&typeof helpers.createCardElement==='function'?helpers:null).catch(()=>null);
-      const helpers=await helperPromise;if (!helpers) helperPromise=null;return helpers;
+      }
+      const helpers=await helperPromise;
+      if(!helpers||(requireRow&&typeof helpers.createRowElement!=='function')){helperPromise=null;return null;}
+      return helpers;
     },
   };
   const tokens=Object.freeze({space1:'var(--ha-space-1, 4px)',space2:'var(--ha-space-2, 8px)',space3:'var(--ha-space-3, 12px)',space4:'var(--ha-space-4, 16px)',mediaRadius:'var(--ha-card-border-radius, 12px)',controlMinHeight:'44px'});
-  const language=hass=>String(hass?.locale?.language||(typeof navigator!=='undefined'?navigator.language:'en')).startsWith('de')?'de':'en';
-  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language});
+  function language(hass,{legacy=false,browser=true}={}) {
+    const code=hass?.locale?.language||(legacy&&hass?.language)||(browser&&typeof navigator!=='undefined'&&navigator.language)||'en';
+    return String(code).toLowerCase().startsWith('de')?'de':'en';
+  }
+  const dictionary=(table,hass,options)=>table[language(hass,options)]||table.en;
+  function fieldText(table,hass,name,options) {
+    const words=dictionary(table,hass,options),fallback=table.en||{};
+    return {label:words?.labels?.[name]??fallback.labels?.[name]??name,helper:words?.helpers?.[name]??fallback.helpers?.[name]??''};
+  }
+  function validateConfig(input,{parse=false,normalize=cloneConfig,validate}={}) {
+    try {
+      const copied=cloneConfig(parse?JSON.parse(input):input);
+      const error=validate?.(copied);
+      if(error) return {ok:false,error:error instanceof Error?error:new Error(String(error))};
+      return {ok:true,value:cloneConfig(normalize(copied))};
+    } catch(error) {return {ok:false,error};}
+  }
+  const addClass=(node,name)=>{if(!String(node.className||'').split(/\s+/).includes(name))node.className=((node.className||'')+' '+name).trim();};
+  function header({node=document.createElement('div'),titleNode,label}={}) {
+    addClass(node,'busch-ui-header');node.setAttribute('role','group');
+    const name=label??titleNode?.textContent;if(name)node.setAttribute('aria-label',name);
+    if(titleNode){if(!/^H[1-6]$/.test(titleNode.tagName||'')){titleNode.setAttribute('role','heading');titleNode.setAttribute('aria-level','2');}addClass(titleNode,'busch-ui-title');}
+    return node;
+  }
+  const actionBindings=new WeakMap();
+  function action({node=document.createElement('button'),label,text,icon,disabled,variant='secondary',onClick}={}) {
+    if(!label)throw new Error('Action requires an accessible label');
+    addClass(node,'busch-ui-action');node.type='button';node.setAttribute('aria-label',label);node.setAttribute('data-variant',variant);
+    if(disabled!==undefined)node.disabled=disabled;
+    let binding=actionBindings.get(node);
+    if(!binding){
+      binding={};actionBindings.set(node,binding);
+      // Keep native keyboard activation and owning tablist arrow navigation.
+      for(const type of ['keydown','keyup'])node.addEventListener(type,event=>{if(event.key==='Enter'||event.key===' ')event.stopPropagation();});
+      node.addEventListener('click',event=>{event.stopPropagation();if(!node.disabled)binding.onClick?.(event);});
+    }
+    binding.onClick=onClick;
+    if(text!==undefined){node.textContent=text;binding.icon=null;}
+    if(icon){if(!binding.icon){binding.icon=ha.icon(icon);binding.icon.setAttribute('aria-hidden','true');node.appendChild(binding.icon);}else binding.icon.setAttribute('icon',icon);}
+    if(icon||text===undefined){if(!node.title||node.title===binding.tooltip){node.title=label;binding.tooltip=label;}}
+    return node;
+  }
+
+  function section({title,content,open=false}={}) {
+    const node=document.createElement('details');
+    addClass(node,'busch-ui-section');node.open=open;
+    const summary=document.createElement('summary');summary.textContent=title;node.appendChild(summary);
+    if(content)node.appendChild(content);return node;
+  }
+  // Scoped bases: family layout/grid/padding and domain presentation override
+  // these fundamentals. No global selectors or services in shared primitives.
+  const cardStyles=`
+.busch-ui-header{min-width:0}.busch-ui-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:where(.busch-ui-action){box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
+:where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+:where(.busch-ui-action):disabled{cursor:default}:where(.busch-ui-action[data-variant=danger]){color:var(--error-color,#db4437)}
+`;
+  const editorStyles=cardStyles+`
+:host(.busch-ui-editor),.busch-ui-editor{display:block;min-width:0;color:var(--primary-text-color,#212121);font:inherit}
+:host(.busch-ui-editor) ha-form,.busch-ui-editor ha-form{display:block;min-width:0}.busch-ui-section{min-width:0}
+.busch-ui-section>summary{cursor:pointer;min-height:44px;box-sizing:border-box;overflow-wrap:anywhere;font-weight:var(--ha-font-weight-medium,500)}
+.busch-ui-section>summary:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+.busch-ui-validation{color:var(--error-color,#db4437);overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
+`;
+  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,action,section,cardStyles,editorStyles});
 })();
 /* END BUSCH SHARED UI */
 
@@ -208,8 +276,7 @@ const LEAFLET_CSS = "/* required styles */\n\n.leaflet-pane,\n.leaflet-tile,\n.l
 /** Language for card and editor: "de" when `hass.locale.language` starts with
  *  "de", "en" otherwise. */
 function cardLanguage(hass) {
-  const code = (hass && hass.locale && hass.locale.language) || "";
-  return String(code).toLowerCase().startsWith("de") ? "de" : "en";
+  return BuschUI.language(hass,{browser:false});
 }
 
 /** Language for `window.customCards` — resolved once, from navigator.language. */
@@ -614,7 +681,7 @@ reverseGeocode._cache = new Map();
 
 /* ── the card ───────────────────────────────────────────────────────────── */
 
-const LOCALTRACK_SHARED_UI_STYLES = `
+const LOCALTRACK_SHARED_UI_STYLES = BuschUI.cardStyles + `
   /* Busch HA UI 0.1.0 — embedded in each card, no runtime dependency. */
   :host { container-type: inline-size; }
   :is(button, select, input, .segment, .leaflet-control-zoom a):focus-visible {
@@ -972,6 +1039,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       state?.attributes?.friendly_name ||
       this._config.entity ||
       "";
+    BuschUI.header({node:this.shadowRoot.querySelector(".header"),titleNode:this._titleEl});
   }
 
   _errorMessage(error) {
@@ -1182,21 +1250,21 @@ function renderLocaltrackEditorForm(editor, schema, words, data, normalize) {
     const form = BuschUI.ha.form();
     form.schema = schema;
     form.computeLabel = (field) => {
-      const translated = words[cardLanguage(editor._hass)];
-      return translated.labels[field.name] || field.name;
+      return BuschUI.fieldText(words,editor._hass,field.name,{browser:false}).label;
     };
     form.computeHelper = (field) => {
-      const translated = words[cardLanguage(editor._hass)];
-      return translated.helpers[field.name] || "";
+      return BuschUI.fieldText(words,editor._hass,field.name,{browser:false}).helper;
     };
     form.addEventListener("value-changed", (event) => {
       event.stopPropagation();
       const merged = { ...editor._config, ...event.detail.value };
-      editor._config = cloneEditorConfig(normalize ? normalize(merged) : merged);
+      const result=BuschUI.validateConfig(merged,{normalize:normalize||cloneEditorConfig});
+      if(!result.ok)return;editor._config=result.value;
       BuschUI.emitConfigChanged(editor,editor._config);
     });
     editor._form = form;
-    editor.appendChild(form);
+    const style=document.createElement('style');style.textContent=BuschUI.editorStyles;editor.classList?.add('busch-ui-editor');
+    editor.appendChild(form);editor.appendChild(style);
   }
   editor._form.hass = editor._hass;
   editor._form.data = cloneEditorConfig(data);
@@ -1629,8 +1697,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._zoneEl = root.querySelector(".pick-zone");
     this._tableEl = root.querySelector("table");
 
-    root.querySelector(".prev").addEventListener("click", () => this._shiftMonth(-1));
-    root.querySelector(".next").addEventListener("click", () => this._shiftMonth(1));
+    BuschUI.action({node:root.querySelector(".prev"),label:this._t.voriger_monat,onClick:() => this._shiftMonth(-1)});
+    BuschUI.action({node:root.querySelector(".next"),label:this._t.naechster_monat,onClick:() => this._shiftMonth(1)});
     this._entityEl.addEventListener("change", () => {
       this._entity = this._entityEl.value;
       this._load();
@@ -1673,6 +1741,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const zone = this._hass?.states?.[this._zone];
     const name = zone?.attributes?.friendly_name || this._zone || "";
     this._titleEl.textContent = this._config.title || name || this._t.titel_ersatz;
+    BuschUI.header({node:this.shadowRoot.querySelector(".head"),titleNode:this._titleEl});
   }
 
   _shiftMonth(delta) {
