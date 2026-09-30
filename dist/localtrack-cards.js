@@ -219,7 +219,7 @@ const BuschUI = (() => {
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.6.0";
+const CARD_VERSION = "0.6.1";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
