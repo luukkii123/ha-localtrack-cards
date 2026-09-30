@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.3.0 sha256:0bd2486252eeba30468ee5e6dd5ac30594562f69457f8bf89a4ebf7b25cfd297 */
-/** Busch UI 0.3.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.3.2 sha256:03f8f2772ce4a11e5bc843226fea493d961f9119bc588f6187190e8bc5a663f2 */
+/** Busch UI 0.3.2 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.3.0';
+  const sourceVersion = '0.3.2';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -30,7 +30,10 @@ const BuschUI = (() => {
     return next;
   }
   const deleteConfigPath=(config,path)=>updateConfigPath(config,path,undefined);
-  function emitConfigChanged(editor,config) {
+  const editorEchoStates=new WeakMap();
+  function editorEchoState(editor) {let state=editorEchoStates.get(editor);if(!state){state=createEchoState();editorEchoStates.set(editor,state);}return state;}
+  function emitConfigChanged(editor,config,{echo=true}={}) {
+    if(echo)queueEcho(editorEchoState(editor),config);
     editor.dispatchEvent(new CustomEvent('config-changed',{detail:{config:cloneConfig(config)},bubbles:true,composed:true}));
   }
   function guardEditorKeys(root) {
@@ -39,15 +42,15 @@ const BuschUI = (() => {
   }
   class EditorBase extends (typeof HTMLElement==='undefined'?class{}:HTMLElement) {
     constructor() {super();guardEditorKeys(this);}
-    _acceptConfig(config,normalize=cloneConfig) {
+    _acceptConfig(config,normalize=cloneConfig,{echo=true}={}) {
       const result=validateConfig(config,{normalize});
       if(!result.ok)throw result.error;
       const next=result.value;
-      if (configsEqual(next,this._config)) return false;
+      if (echo?!acceptEcho(editorEchoState(this),next,this._config):configsEqual(next,this._config)) return false;
       this._config=next;return true;
     }
-    _publishConfig(config) {
-      const next=cloneConfig(config);this._config=next;emitConfigChanged(this,next);return next;
+    _publishConfig(config,options) {
+      const next=cloneConfig(config);this._config=next;emitConfigChanged(this,next,options);return next;
     }
   }
   // HA supplies no echo ID: match the earliest unacknowledged equal snapshot.
@@ -180,9 +183,13 @@ const BuschUI = (() => {
   // these fundamentals. No global selectors or services in shared primitives.
   const cardStyles=`
 .busch-ui-header{min-width:0}.busch-ui-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:where(.busch-ui-action){box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
+:where(.busch-ui-action){border:0;border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-2,8px) var(--ha-space-3,12px);color:var(--primary-text-color,#212121);background:var(--secondary-background-color,#eeeeee);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
 :where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
-:where(.busch-ui-action):disabled{cursor:default}:where(.busch-ui-action[data-variant=danger]){color:var(--error-color,#db4437)}
+:where(.busch-ui-action[data-variant=primary]){background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#ffffff)}
+:where(.busch-ui-action[data-variant=secondary]){background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
+:where(.busch-ui-action[data-variant=destructive]),:where(.busch-ui-action[data-variant=danger]){color:var(--error-color,#db4437)}
+:where(.busch-ui-action[data-variant=quiet]),:where(.busch-ui-action[data-variant=icon-only]),:where(.busch-ui-action[data-variant=overflow]){background:transparent}
+:where(.busch-ui-action):disabled{cursor:default;opacity:0.5}
 `;
   const editorStyles=cardStyles+`
 :host(.busch-ui-editor),.busch-ui-editor{display:block;min-width:0;color:var(--primary-text-color,#212121);font:inherit}
@@ -1276,9 +1283,7 @@ class LocaltrackCardEditor extends BuschUI.EditorBase {
   }
 
   setConfig(config) {
-    const next = cloneEditorConfig(config || {});
-    if (sameEditorConfig(this._config, next)) return;
-    this._config = next;
+    if (!this._acceptConfig(config || {})) return;
     this._render();
   }
 
