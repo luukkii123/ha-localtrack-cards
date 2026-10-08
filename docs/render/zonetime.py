@@ -231,6 +231,8 @@ with sync_playwright() as pw:
     page = browser.new_page(viewport={"width": 620, "height": 1400}, locale="de-DE")
     page.on("console", lambda m: console.append((m.type, m.text)) if m.type == "error" else None)
     page.on("pageerror", lambda e: errors.append(str(e)))
+    # September fixture must not depend on the wall clock of the audit host.
+    page.clock.install(time="2026-09-25T12:00:00Z")
     page.goto(f"http://127.0.0.1:{PORT}/page.html", wait_until="load")
     page.wait_for_function("window.__card && window.__card._result", timeout=20000)
     page.wait_for_timeout(400)
@@ -387,6 +389,7 @@ with sync_playwright() as pw:
     page = browser.new_page(viewport={"width": 360, "height": 1400}, locale="de-DE")
     page.on("console", lambda m: console.append((m.type, m.text)) if m.type == "error" else None)
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.clock.install(time="2026-09-25T12:00:00Z")
     page.goto(f"http://127.0.0.1:{PORT}/page-schmal.html", wait_until="load")
     page.wait_for_function("window.__card && window.__card._result", timeout=20000)
     page.wait_for_timeout(400)
