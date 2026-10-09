@@ -20,3 +20,22 @@ abschließen, Unfertiges freigeben. Gemeinsame Datenschutz- und
 Benachrichtigungsregeln gelten weiter. Der Design-Audit-Auftrag vom 08.10.2026
 ändert nur lokale Dokumentation: keine App-Codeänderung, kein Deploy und
 keine Veröffentlichung oder Netzwerk-Git-Aktion.
+
+
+## Graphify verbindlich verwenden
+
+Nutzerauftrag 09.10.2026 fuer Claude Code, Codex und ihre Unteragenten.
+Vor Architektur-, Aufrufketten-, Dateibeziehungs- oder Aenderungsfolgenfragen:
+
+```bash
+bash "/mnt/user/Data/Claude Projekte/scripts/graphify.sh" query ha-localtrack-cards "<Frage>"
+```
+
+Der Aufruf aktualisiert einen fehlenden/veralteten Graphen automatisch.
+Gefundene Beziehungen am Quellcode pruefen; Graphen sind kein Test- oder
+Live-Nachweis. Nach eigenen Code-/Dokumentaenderungen und nach dem Commit
+`bash "/mnt/user/Data/Claude Projekte/scripts/graphify.sh" aktualisieren ha-localtrack-cards`
+ausfuehren. Unteragenten erhalten diesen Ablauf samt Projektschluessel.
+Massgeblich: [../../docs/graphify.md](../../docs/graphify.md).
+Diese Regel ersetzt aeltere Graphify-Aufruf-/Update-Anweisungen im Projekt.
+Alle Archiv-, Datenschutz-, Todo- und Auslieferungsregeln bleiben gueltig.
