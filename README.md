@@ -148,6 +148,16 @@ Abschnitt zwischen `BEGIN VENDOR` und `END VENDOR`.
 
 ## Geprüft
 
+### Geprüft — 14.10.2026 · 0.6.2 · UI-Zustand #256
+
+Der heutige Tagesverlauf behält Scrubber-Zeitpunkt, Segmentfokus und Scroll
+auch während verzögerter Aktualisierungen. Neue Punkte und Segmente werden
+angezeigt; eine wachsende Historie verschiebt den gewählten Zeitpunkt nicht.
+Gleichwertige Konfigurationen bauen die Karte nicht neu auf. Unabhängige
+Review ohne verbleibende P1/P2-Befunde; finaler Chromiumvertrag 18/18 Fälle
+bei 320/390/480/960 Pixeln hell/dunkel, keine Fehler. Die konkreten Belege und
+Grenzen stehen im [Runtime-Nachtrag](docs/design-audit-2026-10-08.md).
+
 ### Kandidat 0.6.0 — 25.09.2026
 
 **HA-Kompatibilität:** HACS verlangt für diesen Kandidaten mindestens

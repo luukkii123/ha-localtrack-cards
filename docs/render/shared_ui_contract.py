@@ -10,6 +10,7 @@ import ast
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -25,8 +26,12 @@ from regeln import _thema_setzen, messe_text
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "dist" / "localtrack-cards.js"
-OUT = ROOT / "docs" / "render" / "shared-ui-ergebnis"
+SOURCE = pathlib.Path(os.environ.get(
+    "LOCALTRACK_CONTRACT_SOURCE", ROOT / "dist" / "localtrack-cards.js"
+))
+OUT = pathlib.Path(os.environ.get(
+    "LOCALTRACK_CONTRACT_OUT", ROOT / "docs" / "render" / "shared-ui-ergebnis"
+))
 OUT.mkdir(parents=True, exist_ok=True)
 
 CASES = (
@@ -185,7 +190,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                 }
               }
             }""")
-            for width in (320, 480, 960):
+            for width in (320, 390, 480, 960):
                 for theme in ("light", "dark"):
                     page.set_viewport_size({"width": width, "height": 1600})
                     _thema_setzen(page, theme)
@@ -296,10 +301,117 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
               const card = window.__card, root = card.shadowRoot;
               const previousCall = card._hass.callWS;
               if (name === 'timeline') {
-                const segment = root.querySelector('.segment');
+                // A live update to today's tracked person is debounced by
+                // the real hass setter. Keep one selected point and a focused,
+                // scrolled segment while the backend adds/removes points.
+                const scrubber = root.querySelector('.scrubber input[type=range]');
+                const segments = root.querySelector('.segments');
+                const original = card._points;
+                const originalSegments = card._segments;
+                const targetIndex = 20;
+                const target = original[targetIndex];
+                const focused = root.querySelector('.segment:nth-child(3)');
+                if (!target || !focused) throw new Error('timeline fixture needs a point and segments');
+                segments.style.maxHeight = '100px';
+                segments.style.overflowY = 'auto';
+                scrubber.value = String(targetIndex);
+                card._renderScrubber();
+                segments.scrollTop = 75;
+                focused.focus();
+                const focusedTimes = focused.querySelector('.times').textContent;
+                const originalTimestamp = original[40].ts;
+                const updated = [
+                  ...original.slice(0, targetIndex),
+                  {...target, ts: target.ts - 1},
+                  ...original.slice(targetIndex, -1),
+                ];
+                for (let i = 13; i <= 18; i += 1) {
+                  updated[i] = {...updated[i], lat: 52.5191, lon: 13.3954};
+                }
+                let liveCalls = 0;
+                let resolveLive;
+                card._hass.callWS = async message => {
+                  if (message.type === 'localtrack/history') {
+                    liveCalls += 1;
+                    return new Promise(resolve => { resolveLive = () => resolve({points: updated}); });
+                  }
+                  return previousCall(message);
+                };
+                const lastUpdated = card._hass.states['person.test'].last_updated;
+                const nativeSetTimeout = window.setTimeout;
+                let refresh;
+                window.setTimeout = (callback, delay, ...args) => {
+                  if (delay === 30000) {
+                    refresh = () => callback(...args);
+                    return 987654;
+                  }
+                  return nativeSetTimeout(callback, delay, ...args);
+                };
+                for (let i = 1; i <= 3; i += 1) {
+                  card.hass = {...card._hass, states: {...card._hass.states,
+                    'person.test': {...card._hass.states['person.test'],
+                      last_updated: `${lastUpdated}-live-${i}`}}};
+                }
+                window.setTimeout = nativeSetTimeout;
+                let liveLoad;
+                const originalLoadDay = card._loadDay;
+                card._loadDay = function(...args) {
+                  liveLoad = originalLoadDay.apply(this, args);
+                  return liveLoad;
+                };
+                refresh();
+                await Promise.resolve();
+                await Promise.resolve();
+                scrubber.value = '40';
+                card._renderScrubber();
+                focused.focus();
+                segments.scrollTop = 125;
+                const selectedWhileLoading = Number(scrubber.value);
+                const userScrollTop = segments.scrollTop;
+                const preservedWhileLoading = {
+                  scrubberPointVisible: selectedWhileLoading === 40,
+                  segmentNodeRetained: segments.contains(focused),
+                  focusedWhileLoading: root.activeElement === focused,
+                  scrollWhileLoading: Math.abs(segments.scrollTop - userScrollTop) <= 1,
+                  liveRefreshDoesNotMaskContent: !root.querySelector('.map-wrap').classList.contains('busy')
+                    && !root.querySelector('.map-overlay').textContent.trim(),
+                };
+                resolveLive();
+                await liveLoad;
+                card._loadDay = originalLoadDay;
+                const expectedIndex = updated.findIndex(point => point.ts === originalTimestamp);
+                const active = root.activeElement;
+                const stableFocus = active?.classList.contains('segment')
+                  && active.querySelector('.times')?.textContent === focusedTimes;
+                const liveUpdate = {
+                  oneDebouncedReload: liveCalls === 1,
+                  scrubberPointPreserved: Number(scrubber.value) === expectedIndex,
+                  focusedSegmentPreserved: !!stableFocus,
+                  segmentNodePreserved: segments.contains(focused),
+                  focusedSegmentMovedAfterNewSegment: [...segments.children].indexOf(focused) > 2,
+                  segmentScrollPreserved: Math.abs(segments.scrollTop - userScrollTop) <= 1,
+                  latestBackendPointsApplied: card._points.length === updated.length,
+                  ...Object.fromEntries(Object.entries(preservedWhileLoading).map(
+                    ([key, value]) => [`${key}BeforeResponse`, value]
+                  )),
+                };
+                const oldLastTimestamp = card._points.at(-1).ts;
+                scrubber.value = String(card._points.length - 1);
+                const grown = [{...card._points[0], ts: card._points[0].ts - 1}, ...card._points];
+                card._hass.callWS = async () => ({points: grown});
+                await originalLoadDay.call(card, {preserveInteraction: true});
+                const scrubberLastTimestampPreserved = card._points[Number(scrubber.value)]?.ts === oldLastTimestamp;
+                card._hass.callWS = previousCall;
+                // Restore only the rendered fixture for the later empty/error
+                // checks; the assertions above use the changed backend result.
+                card._points = original;
+                card._segments = originalSegments;
+                card._renderTrack();
+                await card._renderSegments();
                 const previousPan = card._map.panTo;
                 let pans = 0;
                 card._map.panTo = () => { pans += 1; return card._map; };
+                const segment = root.querySelector('.segment');
                 segment.dispatchEvent(new KeyboardEvent('keydown',
                   {key:'Enter',bubbles:true,cancelable:true}));
                 segment.dispatchEvent(new KeyboardEvent('keydown',
@@ -314,10 +426,17 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                 card._hass.callWS = async () => { throw {code:'not_found'}; };
                 await card._loadDay();
                 card._hass.callWS = previousCall;
-                return {segmentKeys, empty, error: root.querySelectorAll('.segment').length === 0
+                const rootBeforeConfig = card.shadowRoot;
+                const scrubberBeforeConfig = root.querySelector('.scrubber input[type=range]');
+                card.setConfig(Object.fromEntries(Object.entries(card._config).reverse()));
+                const equivalentConfigPreserved = card.shadowRoot === rootBeforeConfig
+                  && root.querySelector('.scrubber input[type=range]') === scrubberBeforeConfig;
+                return { ...liveUpdate, scrubberLastTimestampPreserved, segmentKeys, empty, error: root.querySelectorAll('.segment').length === 0
                   && root.querySelector('.scrubber').getBoundingClientRect().height === 0
-                  && root.querySelector('.map-overlay').textContent.trim().length > 0};
+                  && root.querySelector('.map-overlay').textContent.trim().length > 0,
+                  equivalentConfigPreserved};
               }
+              if (name !== 'zonetime') return {};
               card._result = {days:[],days_present:0,total_net_s:0,
                 total_gross_s:0,total_visits:0};
               card._render(new Date(card._month.year, card._month.month, 0).getDate(),

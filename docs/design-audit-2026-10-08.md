@@ -92,3 +92,87 @@ B3: Timeline138 Texturteile/0 Verstöße; Zone-Time53/53 und UI 0, deterministis
 | R24 · Ausnahmen | teilweise | Spezifische Ausnahmen/Grenzen unten; R04 hat Vorrang vor älterer pauschaler Scrimregel. |
 | R25 · Menüs/Settings | teilweise | Bestehende thematische Editoren/Settings-Verträge geprüft; nicht jede native lange HA-Auswahlliste erneut untersucht. |
 | R26 · Sprache/Fachvokabular | teilweise | De/en-Wörterbücher, Labels/Helper und Repo-Glossare; tatsächliche Views soweit unten geprüft, Fachnamen bleiben erhalten. |
+
+## Runtime-Nachtrag #256 — geprüfte Fassung 0.6.2 am 14.10.2026
+
+Der heutige Verlaufs-Refresh wartete 30 Sekunden gebündelt, rief dann aber
+`_clearDayDetails()` auf, obwohl sich der betrachtete Tag nicht geändert
+hatte. Das setzte den Scrubber zurück und entfernte alle Segmentknoten schon
+vor der Backendantwort. Nachfolgendes vollständiges Ersetzen der Segmentliste
+verlor Fokus und Scroll außerdem bei Datenänderungen. Der Live-Refresh behält
+jetzt die bestehende Ansicht während des Requests. Direkt bei eintreffender
+Antwort ordnet er den Scrubber anhand des zuletzt gewählten Zeitstempels neu
+zu; Segmentzeilen werden anhand Art sowie Start-/Endzeit reconciled. Fokus und
+Scroll werden unmittelbar vor dem DOM-Abgleich gelesen. Wenn ein neu
+hinzugefügtes Segment die fokussierte Zeile verschiebt, bleibt dieselbe
+Schaltflächenzeile fokussiert; eine inzwischen neue Fokuswahl wird nicht
+überschrieben. Live-Polling zeigt keine blockierende Busy-Fläche; ein
+Backendfehler bleibt weiterhin sichtbar. Gleiche normalisierte Config wird
+mit `BuschUI.configsEqual` nicht erneut gebaut. Abgebrochene Requests und
+asynchrone Segmentrenders können nach Disconnect/Tagwechsel keine veraltete
+Ansicht committen; der neueste ausstehende Tag wird nachgeladen.
+
+### Tatsächliche Prüfung
+
+- `node --check dist/localtrack-cards.js`: Exit 0.
+- `docs/render/shared_ui_contract.py` im vorhandenen
+  `hacs-playwright:1.62.0`: im unabhängigen finalen Root-Lauf 18/18 Fälle,
+  0 Fehler. Die Matrix prüft 320/390/480/960
+  CSS px in hell/dunkel sowie vorhandene Editor-, Tastatur- und
+  Empty/Error-Zustände.
+- Der Live-Refresh-Test verwendet echten Karten-`hass`-Setter und 30-s-Debounce,
+  echte `_loadDay`-Logik und künstliche Backendantworten: drei schnelle Updates
+  ergeben einen Reload; während einer verzögerten Antwort bewegt der Nutzer
+  den Scrubber, fokussiert eine Segmentzeile und scrollt. Die Antwort fügt
+  Punkte hinzu/entfernt sie und bildet zusätzlich eine neue 12,5-minütige
+  Haltestelle vor der fokussierten Zeile. Der neueste Zeitstempel bleibt
+  gewählt, dieselbe fokussierte Zeilen-Node folgt der eingefügten Zeile und
+  behält Fokus/Scroll. Ein separater Fall wählt den letzten alten Punkt, fügt
+  einen früheren Punkt ein und belegt, dass das neue Range-Maximum vor dem
+  wiederhergestellten Wert gesetzt ist; der letzte Zeitstempel bleibt gewählt.
+  Empty/Error-Verhalten bleibt grün. Ein Config-Echo mit
+  umgedrehter Schlüsselreihenfolge lässt Shadow-Root und Range-Control stehen.
+- Gegen das unveränderte `HEAD`-Bundle wurden im selben 14-Fälle-Vertrag zehn
+  gezielte RED-Assertions beobachtet: Zurücksetzen des Scrubbers, Entfernung
+  der fokussierten Node vor Response und Verlust nach eingefügter Segmentzeile,
+  veraltete Startposition statt Nutzerwahl, blockierende Busy-Fläche sowie
+  Neuaufbau bei äquivalenter Config.
+- Dieser Kartenvertrag läuft in echtem Chromium mit künstlichem `hass` und
+  lokalem WS-Fixture. Er ist keine native HA-Integration, keine Live-Backend-
+  oder Geräteprobe. Testberichte/Screenshots liegen unter `/tmp`; der
+  320-px-Screenshot wurde geprüft. Keine Geräteaktion ausgeführt.
+
+### 26 Regel-IDs — Anwendbarkeit und Beleg dieses Eingriffs
+
+| Regel | Status und Beleg / Grenze |
+| --- | --- |
+| R01 | Anwendbar: dieselbe Timeline-Karte bleibt beim heutigen Datenrefresh bedienbar; keine parallele Ansicht ergänzt. |
+| R02 | Nicht anwendbar: Timeline ist eine Leseansicht ohne Sammelaktion. |
+| R03 | Anwendbar: Fokus der Segment-Schaltfläche bleibt auch beim Verschieben durch eine neue Segmentzeile; Enter/Space-Vertrag bleibt geprüft. |
+| R04 | Nicht anwendbar: der Timeline-Kern öffnet keinen eigenen modalen Dialog oder Bestätigungsfluss. |
+| R05 | Teilweise: heutiges Datum und Timeline bleiben bei Datenantwort konsistent; Browser Back/Forward nicht Teil dieser Prüfung. |
+| R06 | Anwendbar: finale 320/390/480/960 px × hell/dunkel Shared-UI-Matrix; kein echter Companion-Gerätetest. |
+| R07 | Nicht anwendbar: Custom Card im HA-Host, keine eigene PWA. |
+| R08 | Anwendbar: keine neue gemeinsame UI-Kopie; vorhandene BuschUI-Helfer unverändert. |
+| R09 | Anwendbar: vorhandene HA-Tokens und beide Themen; vollständige Kontrastmessung fehlt. |
+| R10 | Kein Eingriff: Editor unverändert; vorhandene Editor-/Config-Contractfälle Teil der 14er-Matrix. |
+| R11 | Anwendbar: der Refresh zeigt keine Ladeblockade; Backendfehler bleibt sichtbar. Keine echte Dienststörung. |
+| R12 | Anwendbar: bestehende Empty/Error-Methoden nach Refresh weiterhin grün; keine reale HA-Fehlerantwort. |
+| R13 | Nicht anwendbar: keine destruktive Funktion oder Aktion. |
+| R14 | Anwendbar: Punkte werden synthetisch hinzugefügt/entfernt und eine neue Haltestelle verschiebt die fokussierte Zeile; keine Großhistorien-Lastmessung. |
+| R15 | Teilweise: Range-Steuerung und Segment-Klick/Keyboard geprüft; keine Kartenreihenfolge-/Drag-and-drop-Funktion. |
+| R16 | Teilweise: Fokus, Rolle, Tabindex und Keyboard-Activation im Browser; kein Screenreader, Zoom- oder vollständiger Kontrastnachweis. |
+| R17 | Anwendbar: Scrubber-Zeitpunkt, Segmentfokus und Scroll bleiben bei Live-Datenänderung aktuell. |
+| R18 | Anwendbar: Empty-/Error-Zustände nach den Live-Refresh-Proben erneut geprüft. |
+| R19 | Nicht anwendbar: keine Browserberechtigung angefordert; Standortdaten stammen weiterhin aus HA. |
+| R20 | Teilweise: ein gebündelter Reload für drei schnelle Updates; keine Profil-/Web-Vitals-Messung. |
+| R21 | Anwendbar: umgeordnete, aber äquivalente Config-Echo-Probe baut Bedienzustand nicht zurück. Datumspersistenz wird nicht neu beansprucht. |
+| R22 | Anwendbar: Range-Control und Segmentzeilen bleiben sichtbare Bedienflächen, kein Hover-only-Pfad. |
+| R23 | Anwendbar: dieselbe Timeline-Komponente bei drei Breiten/Themen sowie nach dynamischem Segmentwechsel. |
+| R24 | Kein neuer Override oder Ausnahmeweg; Fehleranzeige bleibt aktiv. |
+| R25 | Nicht anwendbar: keine Settings-/Menüstruktur geändert. |
+| R26 | Anwendbar: DE-Label-/Zeitdarstellung der bestehenden Karte bleibt unverändert; keine neuen Fachbegriffe. |
+
+Unabhängige Review nach den beiden gezielten Korrekturen ohne verbleibende
+P1/P2-Befunde. Veröffentlichung und Installation werden im gemeinsamen
+Auslieferungsbericht gesondert belegt.

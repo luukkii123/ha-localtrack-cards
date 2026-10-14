@@ -219,7 +219,7 @@ const BuschUI = (() => {
  * Unterordner erreichen den Browser nie.
  */
 
-const CARD_VERSION = "0.6.1";
+const CARD_VERSION = "0.6.2";
 
 console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
@@ -719,6 +719,10 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._day = null;
     this._resizeObserver = null;
     this._loading = false;
+    this._pendingLoad = null;
+    this._loadGeneration = 0;
+    this._refreshTimer = null;
+    this._needsLoad = false;
     this._dayStarts = new Map();
   }
 
@@ -737,7 +741,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (domain !== "person" && domain !== "device_tracker") {
       throw new Error(this._t.falsche_entity);
     }
-    this._config = {
+    const nextConfig = {
       height: 320,
       stay_radius_m: 150,
       min_stay_minutes: 10,
@@ -747,6 +751,8 @@ class LocaltrackTimelineCard extends HTMLElement {
       tile_url: "",
       ...config,
     };
+    if (this._config && BuschUI.configsEqual(this._config, nextConfig)) return;
+    this._config = nextConfig;
     this._build();
     if (this._hass) this._loadDay();
   }
@@ -770,14 +776,17 @@ class LocaltrackTimelineCard extends HTMLElement {
       if (!this._refreshTimer) {
         this._refreshTimer = setTimeout(() => {
           this._refreshTimer = null;
-          this._loadDay();
+          this._loadDay({ preserveInteraction: true });
         }, 30000);
       }
     }
   }
 
   connectedCallback() {
-    if (this._config && this._hass && !this._map) this._loadDay();
+    if (this._config && this._hass && (!this._map || this._needsLoad)) {
+      this._needsLoad = false;
+      this._loadDay();
+    }
     if (this._mapEl && !this._resizeObserver) {
       this._resizeObserver = new ResizeObserver(() => {
         if (this._map) this._map.invalidateSize();
@@ -787,6 +796,16 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   disconnectedCallback() {
+    const hadWork = this._loading || this._refreshTimer;
+    if (this._refreshTimer) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+    if (hadWork) {
+      this._loadGeneration += 1;
+      this._pendingLoad = null;
+      this._needsLoad = true;
+    }
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
@@ -969,13 +988,18 @@ class LocaltrackTimelineCard extends HTMLElement {
     });
   }
 
-  async _loadDay() {
+  async _loadDay({ preserveInteraction = false } = {}) {
     if (!this._hass || !this._config) return;
-    if (this._loading) return;
+    if (this._loading) {
+      this._pendingLoad = { preserveInteraction };
+      return;
+    }
     this._loading = true;
+    this._needsLoad = false;
+    const generation = ++this._loadGeneration;
     const day = this._day;
-    this._clearDayDetails();
-    this._showStatus(this._t.laden);
+    if (!preserveInteraction) this._clearDayDetails();
+    if (!preserveInteraction) this._showStatus(this._t.laden);
     try {
       await this._ensureMap();
       const bounds = localDayBounds(day);
@@ -986,9 +1010,24 @@ class LocaltrackTimelineCard extends HTMLElement {
         end: bounds.end.toISOString(),
         max_points: Number(this._config.max_points) || 2000,
       });
-      if (this._day !== day) return; // user changed the date mid-flight
+      if (this._day !== day || generation !== this._loadGeneration) return;
+      // Snapshot the latest choice when the response is ready, not when the
+      // request starts: the user may keep scrubbing while it is in flight.
+      const selectedTimestamp = preserveInteraction
+        ? this._points?.[Number(this._scrubberEl?.value)]?.ts
+        : undefined;
       this._points = result.points || [];
       this._scrubberEl.disabled = this._points.length === 0;
+      // Set the new bound before restoring an index; range inputs clamp a
+      // value immediately against their current max.
+      this._scrubberEl.max = String(Math.max(0, this._points.length - 1));
+      if (selectedTimestamp !== undefined && this._points.length) {
+        const nearestIndex = this._points.reduce((bestIndex, point, index) =>
+          Math.abs(point.ts - selectedTimestamp) < Math.abs(
+            this._points[bestIndex].ts - selectedTimestamp
+          ) ? index : bestIndex, 0);
+        this._scrubberEl.value = String(nearestIndex);
+      }
       this._scrubberEl.closest(".scrubber").style.display =
         this._points.length && this._config.show_scrubber !== false ? "" : "none";
       this._segments = computeSegments(
@@ -997,7 +1036,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         Number(this._config.min_stay_minutes) || 10
       );
       this._renderTrack();
-      this._renderSegments();
+      await this._renderSegments({ generation, day });
       if (this._points.length === 0) {
         this._showStatus(this._t.keine_punkte);
       } else {
@@ -1008,6 +1047,11 @@ class LocaltrackTimelineCard extends HTMLElement {
       this._showStatus(this._errorMessage(error));
     } finally {
       this._loading = false;
+      const pending = this._pendingLoad;
+      this._pendingLoad = null;
+      if (pending || this._day !== day) {
+        void this._loadDay(this._day === day ? pending : {});
+      }
     }
   }
 
@@ -1194,14 +1238,17 @@ class LocaltrackTimelineCard extends HTMLElement {
     return this._t.unterwegs;
   }
 
-  async _renderSegments() {
+  async _renderSegments({ generation, day } = {}) {
     const L = this._leaflet;
     const t = this._t;
     const locale = this._hass?.locale?.language || "de";
     if (!this._segments.length) {
-      this._segmentsEl.innerHTML = "";
+      if (this._segmentsEl.childElementCount) this._segmentsEl.replaceChildren();
       return;
     }
+    const currentRows = new Map(Array.from(this._segmentsEl.children, row =>
+      [row.dataset.segmentKey, row]
+    ));
     const rows = [];
     for (let i = 0; i < this._segments.length; i += 1) {
       const segment = this._segments[i];
@@ -1222,16 +1269,47 @@ class LocaltrackTimelineCard extends HTMLElement {
         label = t.strecke;
         meta = fillText(t.km, { wert: BuschUI.formatNumber(segment.distance/1000,'en',{useGrouping:false,minimumFractionDigits:1,maximumFractionDigits:1}) });
       }
-      rows.push(
-        `<div class="segment ${segment.kind}" data-index="${i}" role="button" tabindex="0">
-          <div class="dot"></div>
-          <div class="times">${times}</div>
-          <div class="label">${label}</div>
-          <div class="meta">${meta}</div>
-        </div>`
-      );
+      const key = `${segment.kind}:${segment.start}:${segment.end}`;
+      let row = currentRows.get(key);
+      if (row) currentRows.delete(key);
+      else {
+        row = document.createElement("div");
+        row.className = `segment ${segment.kind}`;
+        row.dataset.segmentKey = key;
+        row.setAttribute("role", "button");
+        row.tabIndex = 0;
+        row.innerHTML = '<div class="dot"></div><div class="times"></div>'
+          + '<div class="label"></div><div class="meta"></div>';
+      }
+      row.dataset.index = String(i);
+      row.querySelector(".times").textContent = times;
+      row.querySelector(".label").textContent = label;
+      row.querySelector(".meta").textContent = meta;
+      rows.push(row);
     }
-    this._segmentsEl.innerHTML = rows.join("");
+    if ((generation !== undefined && generation !== this._loadGeneration)
+        || (day !== undefined && day !== this._day)) return;
+    // Snapshot immediately before reconciliation. If the user moved focus
+    // while reverse geocoding was pending, their new target wins.
+    const activeBeforeCommit = this.shadowRoot.activeElement;
+    const focusedRowBeforeCommit = activeBeforeCommit?.closest?.(".segment");
+    const focusedKey = focusedRowBeforeCommit?.dataset.segmentKey;
+    const focusedIndex = focusedRowBeforeCommit
+      ? Array.from(this._segmentsEl.children).indexOf(focusedRowBeforeCommit)
+      : -1;
+    const scrollTop = this._segmentsEl.scrollTop;
+    for (const row of currentRows.values()) row.remove();
+    rows.forEach((row, index) => {
+      if (this._segmentsEl.children[index] !== row) {
+        this._segmentsEl.insertBefore(row, this._segmentsEl.children[index] || null);
+      }
+    });
+    if (focusedKey && this.shadowRoot.activeElement !== activeBeforeCommit) {
+      const sameRow = rows.find(row => row.dataset.segmentKey === focusedKey);
+      const target = sameRow || rows[Math.min(focusedIndex, rows.length - 1)];
+      target?.focus({ preventScroll: true });
+    }
+    this._segmentsEl.scrollTop = scrollTop;
     // Reverse geocoding filled in labels above; also refresh the scrubber label.
     if (this._points.length) this._renderScrubber();
   }
