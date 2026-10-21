@@ -1,0 +1,16 @@
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Ergebnisse der Render-Läufe — erzeugt, nicht gepflegt.
+docs/render/ergebnis/
+docs/render/mobil/
+docs/render/zindex-ergebnis/
+docs/render/zonetime-ergebnis/
+docs/render/shared-ui-ergebnis/
+
+# Nur lokal nötig: Agent-Einstieg und lokale Design-Dokumente
+AGENTS.md
+CLAUDE.md
+docs/design-audit-*.md
+docs/design-glossar.md

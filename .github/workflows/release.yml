@@ -1,0 +1,42 @@
+name: Release
+
+# Ein Tag-Push genügt. Dieser Workflow legt das Release selbst an und hängt die
+# fertige JS-Datei als Asset dran — vorher musste das Release von Hand im
+# Browser erzeugt werden, sonst zeigte HACS kein Update.
+#
+# HACS nimmt bevorzugt das Asset; ohne Asset fällt es auf die Datei im Repo
+# (dist/localtrack-cards.js) zurück.
+on:
+  push:
+    tags:
+      - "v*"
+  # Nachträglich auslösbar, falls ein Tag schon existiert.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release anlegen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version gegen den Tag prüfen
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          card=$(grep -oP 'CARD_VERSION = "\K[^"]+' dist/localtrack-cards.js)
+          echo "Tag: $tag — CARD_VERSION: $card"
+          if [ "$tag" != "$card" ]; then
+            echo "::error::CARD_VERSION ($card) passt nicht zum Tag ($tag)."
+            exit 1
+          fi
+
+      - name: Release anlegen und Asset anhängen
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/localtrack-cards.js
