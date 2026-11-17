@@ -1,18 +1,44 @@
 name: Validate
 
 on:
+  workflow_call:
   push:
   pull_request:
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hacs/action@main
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
         with:
           category: plugin
+
+  node:
+    name: node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in dist/*.js; do node --check "$f"; done
+      - name: Shared UI block matches its hash
+        run: |
+          python3 - <<'PY'
+          import hashlib,pathlib,re,sys
+          for p in sorted(pathlib.Path('dist').glob('*.js')):
+            m=re.search(r'/\* BEGIN BUSCH SHARED UI \S+ sha256:([0-9a-f]{64}) \*/\n(.*?)/\* END BUSCH SHARED UI \*/',p.read_text(),re.S)
+            if not m: print(p,'kein Shared-UI-Block');continue
+            ok=hashlib.sha256(m[2].encode()).hexdigest()==m[1]; print(p,'ok' if ok else 'ABWEICHUNG'); ok or sys.exit(1)
+          PY
+      - name: Tests
+        run: if ls tests/*.test.js >/dev/null 2>&1; then node --test tests/*.test.js; else echo "no tests"; fi
