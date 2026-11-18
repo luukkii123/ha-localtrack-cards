@@ -10,7 +10,9 @@ eine Datei aus, Unterordner erreichen den Browser nie. Deshalb steckt
 **Leaflet 1.9.4** (BSD-2-Clause) vollständig in der Datei: die UMD-Fassung, das
 CSS als injizierter `<style>`, die vier Marker-PNGs als `data:`-URIs (Abschnitt
 `BEGIN VENDOR` bis `END VENDOR`). Nachgeladen werden nur Kartenkacheln. Das
-erklärt die Dateigröße von rund 270 kB.
+erklärt die Dateigröße von rund 270 kB. Ausgewertet wird die UMD erst beim
+ersten Kartenaufbau (`localtrackLeaflet()`, #1304); liegt schon ein Leaflet auf
+der Seite (busch-cards), nutzen beide Karten diese eine Instanz.
 
 Zwei Vendor-Blöcke mit Hash im Marker (`/* BEGIN VENDOR <name> 1.9.4 sha256:… */` …
 `/* END VENDOR <name> */`, Hash über die Bytes zwischen den Markern, geprüft am 18.11.2026):
@@ -40,7 +42,7 @@ genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 
 | Skript | Prüft |
 | --- | --- |
-| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern) |
+| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen |
 | `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext) |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |

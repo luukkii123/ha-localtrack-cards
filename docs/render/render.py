@@ -18,6 +18,13 @@ Seit 09.09.2026 misst derselbe Lauf zusätzlich `docs/ui-regeln.md`:
   ausgelöst, danach wird gezählt, ob ein Leaflet-Popup, ein Tooltip oder ein
   Dialog entstanden ist und ob sich die Adresse geändert hat.
 
+Seit #1304 (M21) dazu die Variante **mapcard**: busch-map-card aus
+`busch-cards/dist/busch-cards.js` und die Timeline auf einer Seite, beide
+Ladereihenfolgen. Belegt, dass das Laden kein Leaflet auswertet und beide
+Karten eine Instanz teilen (Bilder `mapcard-localtrack-zuerst.png`,
+`mapcard-busch-zuerst.png`). Ohne busch-cards-Buendel neben diesem Repo
+(oder `LOCALTRACK_BUSCH_BUNDLE`) ist der Lauf rot.
+
 Auf diesem Server läuft Playwright nur im Container. Der Aufruf braucht
 **beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
 (`HACS_DIR` = Pfad des hacs-Ordners auf dem Server)
@@ -31,6 +38,7 @@ Auf diesem Server läuft Playwright nur im Container. Der Aufruf braucht
                   /cards/docs/render/ergebnis 620'
 """
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -55,6 +63,15 @@ SERVE = OUT / "serve"
 SERVE.mkdir(exist_ok=True)
 shutil.copy(JS, SERVE / "localtrack-cards.js")
 PORT = 8099
+
+# Variante „mapcard" (#1304, M21): busch-map-card aus busch-cards und die
+# Timeline auf EINER Seite. Das busch-cards-Buendel liegt im Runner neben
+# diesem Repo (/hacs/busch-cards/...); LOCALTRACK_BUSCH_BUNDLE ueberschreibt.
+BUSCH_JS = pathlib.Path(os.environ.get(
+    "LOCALTRACK_BUSCH_BUNDLE",
+    str(JS.resolve().parents[2] / "busch-cards" / "dist" / "busch-cards.js")))
+if BUSCH_JS.exists():
+    shutil.copy(BUSCH_JS, SERVE / "busch-cards.js")
 
 PAGE = """<!doctype html>
 <meta charset="utf-8">
@@ -183,6 +200,129 @@ PAGE = """<!doctype html>
 """
 PAGE = PAGE.replace("__MAXW__", str(WIDTH - 60))
 (SERVE / "page.html").write_text(PAGE, encoding="utf-8")
+
+# ── Variante „mapcard": beide Leaflet-Karten auf einer Seite ───────────────
+# Beide Buendel laden wie in Home Assistant als Module (eigener Gueltigkeits-
+# bereich je Datei), in der Reihenfolge der Seite. Seit M21 wertet KEINES von
+# beiden Leaflet beim Laden aus; wer zuerst eine Karte baut, setzt window.L,
+# die andere Karte nutzt genau diese Instanz mit. Die eingebaute Map-Karte ist
+# wie in busch-cards/docs/render/mapcard.py (Modus „stubKarte") nachgebaut:
+# ein ha-map ohne Rasterebene, damit busch-map-card ihr Leaflet braucht.
+MAPCARD_PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>mapcard</title>
+<style>
+  :root { --primary-color:#03a9f4; --primary-text-color:#212121; --secondary-text-color:#727272;
+          --divider-color:#e0e0e0; --card-background-color:#fff; --error-color:#db4437;
+          --secondary-background-color:#e5e5e5; --text-primary-color:#fff; }
+  body { margin:0; padding:16px; background:#f2f4f7; font-family:Roboto,sans-serif; }
+  #wrap { max-width:560px; margin:0 auto; }
+  #wrap > * { display:block; margin-bottom:16px; }
+</style>
+<div id="wrap"></div>
+<script>
+  customElements.define('ha-card', class extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML =
+      '<style>:host{display:block;background:#fff;border-radius:12px}</style><slot></slot>'; }
+  });
+  customElements.define('ha-icon', class extends HTMLElement {});
+  customElements.define('ha-form', class extends HTMLElement {});
+  customElements.define('ha-map', class extends HTMLElement {});
+  customElements.define('fake-map-card', class extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: 'open' }); }
+    setConfig(c) { this._config = c; }
+    set hass(h) { this._hass = h; }
+    getCardSize() { return 7; }
+    connectedCallback() {
+      if (this._gebaut) return;
+      this._gebaut = true;
+      this.shadowRoot.innerHTML = '<ha-map style="display:block;height:200px"></ha-map>';
+      const panes = {};
+      const haMap = this.shadowRoot.querySelector('ha-map');
+      haMap.leafletMap = {
+        _hinzugefuegt: [],
+        eachLayer() {},
+        getPane(n) { return panes[n]; },
+        createPane(n) { panes[n] = { style: {} }; return panes[n]; },
+        addLayer(l) { this._hinzugefuegt.push(l); return this; },
+        removeLayer() { return this; },
+      };
+      window.__stubMap = haMap.leafletMap;
+    }
+  });
+  window.loadCardHelpers = async () => ({
+    createCardElement: async (config) => {
+      const el = document.createElement('fake-map-card'); el.setConfig(config); return el;
+    },
+  });
+  const t0 = Math.round(new Date().setHours(9, 0, 0, 0) / 1000);
+  const points = [];
+  for (let i = 0; i <= 20; i++) points.push({ ts: t0 + i * 60, lat: 52.5163, lon: 13.3777 });
+  window.__wsCalls = [];
+  window.__hass = {
+    locale: { language: 'de' }, themes: { darkMode: false },
+    states: {
+      'person.test': { entity_id: 'person.test', state: 'home', last_updated: new Date().toISOString(),
+        attributes: { friendly_name: 'Testperson', latitude: 52.5163, longitude: 13.3777 } },
+      'zone.home': { entity_id: 'zone.home', state: '1',
+        attributes: { friendly_name: 'Zuhause', latitude: 52.5163, longitude: 13.3777, radius: 120 } },
+    },
+    callWS(msg) {
+      window.__wsCalls.push(msg.type);
+      if (msg.type === 'localtrack/history') return Promise.resolve({ points });
+      return Promise.resolve({});
+    },
+    callService() { return Promise.resolve(); },
+  };
+  window.__nachLaden = null;
+</script>
+__MODULE__
+<script type="module">
+  // Module laufen in Dokumentreihenfolge: dieses hier nach beiden Buendeln.
+  window.__nachLaden = { windowL: !!window.L, leafletGlobal: !!window.leaflet };
+  const warte = async (fn, ms = 15000) => {
+    const ende = Date.now() + ms;
+    while (Date.now() < ende) { if (fn()) return true; await new Promise(r => setTimeout(r, 50)); }
+    return false;
+  };
+  const timeline = async () => {
+    const card = document.createElement('localtrack-timeline-card');
+    card.setConfig({ type: 'custom:localtrack-timeline-card', entity: 'person.test', height: 240 });
+    document.getElementById('wrap').appendChild(card);
+    card.hass = window.__hass;
+    window.__timeline = card;
+    return warte(() => card._map && card.shadowRoot.querySelector('.leaflet-container'));
+  };
+  const mapcard = async () => {
+    const card = document.createElement('busch-map-card');
+    card.setConfig({ type: 'custom:busch-map-card', entities: ['person.test'], map_style: 'osm' });
+    document.getElementById('wrap').appendChild(card);
+    card.hass = window.__hass;
+    return warte(() => window.__stubMap && window.__stubMap._hinzugefuegt.length > 0);
+  };
+  window.__lauf = async (zuerst) => {
+    const schritte = zuerst === 'localtrack' ? [timeline, mapcard] : [mapcard, timeline];
+    const erste = await schritte[0]();
+    const erstesL = window.L || null;
+    const zweite = await schritte[1]();
+    const ebene = window.__stubMap && window.__stubMap._hinzugefuegt[0];
+    const L = window.L;
+    return {
+      zuerst, nachLaden: window.__nachLaden, erste, zweite,
+      version: L && L.version,
+      windowLUnveraendert: !!erstesL && L === erstesL,
+      timelineNutztWindowL: !!window.__timeline && window.__timeline._leaflet === L,
+      ebeneAusDerselbenInstanz: !!(ebene && L && ebene instanceof L.TileLayer),
+      kacheln: window.__timeline ? window.__timeline.shadowRoot.querySelectorAll('img.leaflet-tile').length : 0,
+      wsCalls: window.__wsCalls,
+    };
+  };
+</script>
+"""
+for _name, _reihe in (("mapcard-localtrack.html", ("localtrack-cards.js", "busch-cards.js")),
+                      ("mapcard-busch.html", ("busch-cards.js", "localtrack-cards.js"))):
+    (SERVE / _name).write_text(MAPCARD_PAGE.replace("__MODULE__", "\n".join(
+        '<script type="module" src="/%s"></script>' % datei for datei in _reihe)), encoding="utf-8")
 
 server = subprocess.Popen(
     [sys.executable, "-m", "http.server", str(PORT), "--directory", str(SERVE)],
@@ -420,6 +560,26 @@ try:
             return {"bild": name}
 
         lauf_breiten(page, breiten=(320,), messung=bild, vor_messung=voll_breit)
+
+        # ── Variante „mapcard" (#1304, M21) ────────────────────────────────
+        # Je Reihenfolge eine frische Seite: einmal baut die Timeline zuerst
+        # ihre Karte, einmal busch-map-card. Seitenfehler zaehlen je Seite.
+        mapcard = {"busch_bundle": str(BUSCH_JS), "busch_bundle_da": BUSCH_JS.exists(), "laeufe": []}
+        if BUSCH_JS.exists():
+            for zuerst, datei in (("localtrack", "mapcard-localtrack.html"),
+                                  ("busch", "mapcard-busch.html")):
+                mp = browser.new_page(viewport={"width": 620, "height": 900}, locale="de-DE")
+                fehler = []
+                mp.on("pageerror", lambda e, f=fehler: f.append(str(e)))
+                mp.goto(f"http://127.0.0.1:{PORT}/{datei}", wait_until="load")
+                mp.wait_for_function("typeof window.__lauf === 'function'", timeout=20000)
+                lauf = mp.evaluate("(z) => window.__lauf(z)", zuerst)
+                mp.wait_for_timeout(1500)   # Kacheln laden lassen
+                name = "mapcard-%s-zuerst.png" % zuerst
+                mp.screenshot(path=str(OUT / name), full_page=True)
+                lauf.update({"seitenfehler": fehler, "bild": name})
+                mapcard["laeufe"].append(lauf)
+                mp.close()
         browser.close()
 finally:
     server.terminate()
@@ -442,6 +602,7 @@ report = {
     "regel3_editor_en": editor_en,
     "regel3_karte": stub,
     "regel4_bilder": bilder,
+    "mapcard": mapcard,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────
@@ -502,7 +663,24 @@ checks = {
         len(stub["customCards"]) == 2 and all(
             all(e.get(f) for f in ("type", "name", "description", "documentationURL"))
             and e.get("preview") is True for e in stub["customCards"]),
+    # mapcard (#1304, M21): Leaflet erst bei Bedarf, eine Instanz fuer beide Karten.
+    "mapcard: busch-cards.js gefunden": mapcard["busch_bundle_da"],
+    "mapcard: zwei Reihenfolgen gelaufen": len(mapcard["laeufe"]) == 2,
 }
+for _lauf in mapcard["laeufe"]:
+    _z = _lauf["zuerst"]
+    checks.update({
+        f"mapcard ({_z} zuerst): Laden beider Buendel wertet kein Leaflet aus":
+            _lauf["nachLaden"] == {"windowL": False, "leafletGlobal": False},
+        f"mapcard ({_z} zuerst): beide Karten fertig": _lauf["erste"] and _lauf["zweite"],
+        f"mapcard ({_z} zuerst): Leaflet 1.9.4": _lauf["version"] == "1.9.4",
+        f"mapcard ({_z} zuerst): window.L nach der zweiten Karte unveraendert":
+            _lauf["windowLUnveraendert"],
+        f"mapcard ({_z} zuerst): Timeline nutzt window.L": _lauf["timelineNutztWindowL"],
+        f"mapcard ({_z} zuerst): Kachelebene der busch-map-card aus derselben Instanz":
+            _lauf["ebeneAusDerselbenInstanz"],
+        f"mapcard ({_z} zuerst): keine Seitenfehler": _lauf["seitenfehler"] == [],
+    })
 report["pruefungen"] = checks
 report["bestanden"] = all(checks.values()) and bewerte(report) == 0
 report["gescheitert"] = [k for k, v in checks.items() if not v]
