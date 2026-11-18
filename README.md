@@ -11,7 +11,8 @@ Landkarte und die Verweildauer an einem Ort, Monat für Monat.**
 | `localtrack-zone-time-card` | wie lange eine Person an einem Ort (Zone) war, ein Monat als Tagesliste mit Netto- und Bruttozeit |
 
 Beide Karten lassen sich über *Karte hinzufügen* mit Vorschau und grafischem
-Editor einrichten, ohne YAML. Sie sprechen Deutsch und Englisch nach der
+Editor einrichten, ohne YAML. Die Vorschau im Kartenwähler zeigt Beispieldaten
+und lädt nichts; echte Daten erscheinen, sobald die Karte im Dashboard steht. Sie sprechen Deutsch und Englisch nach der
 Spracheinstellung von Home Assistant.
 
 ## Voraussetzungen

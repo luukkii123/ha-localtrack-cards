@@ -3,7 +3,7 @@
 // #1011 card picker, as in the other repos: name, one sentence of
 // description, explicit preview flag, defaults without network.
 // Unlike the other repos `preview` stays true here: decision E11 (18.11.2026)
-// keeps a preview for Local Track and makes it static later (M53).
+// keeps a preview for Local Track; it is static (M53, kartenwaehler-vorschau.test.js).
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ladeKarte } = require("./laden.js");

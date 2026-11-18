@@ -25,6 +25,11 @@ Karten eine Instanz teilen (Bilder `mapcard-localtrack-zuerst.png`,
 `mapcard-busch-zuerst.png`). Ohne busch-cards-Buendel neben diesem Repo
 (oder `LOCALTRACK_BUSCH_BUNDLE`) ist der Lauf rot.
 
+Seit #1304 (M53) ausserdem **picker-preview**: beide Karten wie in HAs
+Kartenwaehler (`div.preview` im Schatten von `hui-card-picker`). Belegt die
+statische Vorschau ohne WebSocket-, Kachel- und Nominatim-Abruf (Bilder
+`picker-preview.png`, `picker-preview-390.png`).
+
 Auf diesem Server läuft Playwright nur im Container. Der Aufruf braucht
 **beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
 (`HACS_DIR` = Pfad des hacs-Ordners auf dem Server)
@@ -319,6 +324,83 @@ __MODULE__
   };
 </script>
 """
+# ── Variante „picker-preview" (#1304, M53): HAs Kartenwaehler ─────────────
+# Wie `hui-card-picker.ts`: Karte erzeugen, setConfig mit getStubConfig, hass
+# setzen, dann in ein `div.preview` IM Schatten von hui-card-picker haengen.
+# Erwartet: statische Vorschau, kein WS-Aufruf, keine Kachel, kein Nominatim.
+PICKER_PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>picker-preview</title>
+<style>
+  :root { --primary-color:#03a9f4; --primary-text-color:#212121; --secondary-text-color:#727272;
+          --disabled-text-color:#bdbdbd; --divider-color:#e0e0e0; --card-background-color:#fff;
+          --error-color:#db4437; --success-color:#4caf50; --secondary-background-color:#e5e5e5;
+          --text-primary-color:#fff; }
+  body { margin:0; padding:16px; background:#f2f4f7; font-family:Roboto,sans-serif; }
+</style>
+<hui-card-picker></hui-card-picker>
+<script>
+  customElements.define('ha-card', class extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML =
+      '<style>:host{display:block;background:var(--card-background-color);border-radius:12px;' +
+      'color:var(--primary-text-color)}</style><slot></slot>'; }
+  });
+  customElements.define('ha-icon', class extends HTMLElement {});
+  customElements.define('ha-form', class extends HTMLElement {});
+  customElements.define('hui-card-picker', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}' +
+        '.card{background:#fff;border-radius:12px;overflow:hidden;position:relative}' +
+        '.card-header{padding:12px 16px;font-weight:500}' +
+        '.preview{pointer-events:none;margin:0 16px 16px;max-height:420px;overflow:hidden}</style>' +
+        '<div class="cards"></div>';
+    }
+  });
+  window.__wsCalls = [];
+  window.__hass = {
+    locale: { language: 'de' }, themes: { darkMode: false }, entities: {},
+    states: {
+      'person.test': { entity_id: 'person.test', state: 'home', last_updated: new Date().toISOString(),
+        attributes: { friendly_name: 'Testperson', latitude: 52.5163, longitude: 13.3777 } },
+      'zone.home': { entity_id: 'zone.home', state: '1',
+        attributes: { friendly_name: 'Zuhause', latitude: 52.5163, longitude: 13.3777, radius: 120 } },
+      'zone.work': { entity_id: 'zone.work', state: '0',
+        attributes: { friendly_name: 'Arbeit', latitude: 52.5219, longitude: 13.4132, radius: 150 } },
+    },
+    callWS(msg) { window.__wsCalls.push(msg.type); return new Promise(() => {}); },
+    callService() { return Promise.resolve(); },
+  };
+</script>
+<script type="module" src="/localtrack-cards.js"></script>
+<script type="module">
+  const picker = document.querySelector('hui-card-picker');
+  const liste = picker.shadowRoot.querySelector('.cards');
+  window.__karten = [];
+  for (const eintrag of window.customCards.filter((e) => e.type.startsWith('localtrack-'))) {
+    const Klasse = customElements.get(eintrag.type);
+    const karte = document.createElement(eintrag.type);
+    karte.setConfig(Klasse.getStubConfig(window.__hass));
+    karte.hass = window.__hass;
+    karte.tabIndex = -1;
+    const kasten = document.createElement('div');
+    kasten.className = 'card';
+    const kopf = document.createElement('div');
+    kopf.className = 'card-header';
+    kopf.textContent = eintrag.name;
+    const vorschau = document.createElement('div');
+    vorschau.className = 'preview';
+    vorschau.appendChild(karte);
+    kasten.append(kopf, vorschau);
+    liste.appendChild(kasten);
+    window.__karten.push(karte);
+  }
+  window.__pickerFertig = true;
+</script>
+"""
+(SERVE / "picker-preview.html").write_text(PICKER_PAGE, encoding="utf-8")
+
 for _name, _reihe in (("mapcard-localtrack.html", ("localtrack-cards.js", "busch-cards.js")),
                       ("mapcard-busch.html", ("busch-cards.js", "localtrack-cards.js"))):
     (SERVE / _name).write_text(MAPCARD_PAGE.replace("__MODULE__", "\n".join(
@@ -580,6 +662,38 @@ try:
                 lauf.update({"seitenfehler": fehler, "bild": name})
                 mapcard["laeufe"].append(lauf)
                 mp.close()
+
+        # ── Variante „picker-preview" (#1304, M53) ─────────────────────────
+        # Eigene Seite mit eigenem Anfrageprotokoll: Kacheln oder Nominatim
+        # waeren hier echte Netzanfragen und muessen fehlen.
+        picker = {"anfragen": [], "seitenfehler": []}
+        pp = browser.new_page(viewport={"width": 720, "height": 1100}, locale="de-DE")
+        pp.on("request", lambda r: picker["anfragen"].append(r.url))
+        pp.on("pageerror", lambda e: picker["seitenfehler"].append(str(e)))
+        pp.goto(f"http://127.0.0.1:{PORT}/picker-preview.html", wait_until="load")
+        pp.wait_for_function("window.__pickerFertig === true", timeout=20000)
+        pp.wait_for_timeout(2500)   # Zeit fuer etwaige Abrufe, die es nicht geben darf
+        picker.update(pp.evaluate("""() => {
+            const [tl, zt] = window.__karten;
+            return {
+              karten: window.__karten.map((k) => k.tagName.toLowerCase()),
+              vorschau: window.__karten.map((k) => k._preview === true),
+              wsCalls: window.__wsCalls,
+              windowL: !!window.L,
+              timelineZeilen: tl.shadowRoot.querySelectorAll('.segment').length,
+              timelineWeg: !!tl.shadowRoot.querySelector('.map svg.preview-route'),
+              timelineLeaflet: !!tl.shadowRoot.querySelector('.leaflet-container'),
+              zonenZeilen: zt.shadowRoot.querySelectorAll('tbody tr').length,
+              zonenTabelleSichtbar: !zt.shadowRoot.querySelector('table').hidden,
+              titel: window.__karten.map((k) => k.shadowRoot.querySelector('.title').textContent),
+            };
+        }"""))
+        pp.screenshot(path=str(OUT / "picker-preview.png"), full_page=True)
+        pp.set_viewport_size({"width": 390, "height": 1600})
+        pp.wait_for_timeout(400)
+        pp.screenshot(path=str(OUT / "picker-preview-390.png"), full_page=True)
+        picker["bilder"] = ["picker-preview.png", "picker-preview-390.png"]
+        pp.close()
         browser.close()
 finally:
     server.terminate()
@@ -603,6 +717,7 @@ report = {
     "regel3_karte": stub,
     "regel4_bilder": bilder,
     "mapcard": mapcard,
+    "picker_preview": picker,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────
@@ -666,6 +781,22 @@ checks = {
     # mapcard (#1304, M21): Leaflet erst bei Bedarf, eine Instanz fuer beide Karten.
     "mapcard: busch-cards.js gefunden": mapcard["busch_bundle_da"],
     "mapcard: zwei Reihenfolgen gelaufen": len(mapcard["laeufe"]) == 2,
+    # picker-preview (#1304, M53, E11): statische Vorschau ohne Abrufe.
+    "picker-preview: beide Karten im Waehler": picker.get("karten") ==
+        ["localtrack-timeline-card", "localtrack-zone-time-card"],
+    "picker-preview: beide Karten in der statischen Vorschau": picker.get("vorschau") == [True, True],
+    "picker-preview: kein WebSocket-Aufruf": picker.get("wsCalls") == [],
+    "picker-preview: keine Kachel- oder Nominatim-Anfrage": not any(
+        "tile" in u or "nominatim" in u for u in picker["anfragen"]),
+    "picker-preview: nur Seite und Buendel angefragt": all(
+        u.startswith(f"http://127.0.0.1:{PORT}/") for u in picker["anfragen"]),
+    "picker-preview: Leaflet nicht ausgewertet": picker.get("windowL") is False,
+    "picker-preview: Timeline zeigt Beispielweg ohne Leaflet":
+        picker.get("timelineWeg") is True and picker.get("timelineLeaflet") is False,
+    "picker-preview: Timeline zeigt Beispieltag": picker.get("timelineZeilen", 0) >= 3,
+    "picker-preview: Zonenzeit zeigt Beispielmonat":
+        picker.get("zonenTabelleSichtbar") is True and picker.get("zonenZeilen", 0) >= 28,
+    "picker-preview: keine Seitenfehler": picker["seitenfehler"] == [],
 }
 for _lauf in mapcard["laeufe"]:
     _z = _lauf["zuerst"]

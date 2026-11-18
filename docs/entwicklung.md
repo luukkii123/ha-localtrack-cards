@@ -42,7 +42,7 @@ genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 
 | Skript | Prüft |
 | --- | --- |
-| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen |
+| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf |
 | `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext) |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |
@@ -82,6 +82,12 @@ eingestellten Sprache.
   Label und Helper zweisprachig, zeigt die Vorgaben der Verweildauer-Karte nur an
   (beim Speichern landen nur Abweichungen in der Konfiguration) und lässt die
   dynamischen `getStubConfig`-Vorschläge für Person und Zone bestehen.
+- **Kartenwähler:** Steckt eine Karte in Home Assistants `hui-card-picker`
+  (Vorfahre über Shadow-Grenzen), zeigt sie eine statische Vorschau mit
+  Beispieldaten (Beispielweg und -tag, Beispielmonat) und ruft weder
+  WebSocket noch Kacheln noch Nominatim ab. Geladen wird erst, wenn die Karte
+  in der Seite hängt. Die Vorschau im Bearbeitungsdialog ist eine echte Karte
+  und zeigt echte Daten.
 - **Netto/brutto:** Ist das Handy lange aus, schreibt netto höchstens
   `max_gap_minutes` gut, brutto zeigt die Spanne trotzdem. Die Companion-App
   meldet nach Bewegung, nicht nach Uhr; ein Tag zu Hause hat daher wenige

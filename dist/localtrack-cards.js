@@ -410,6 +410,9 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       km: "{wert} km",
       fehlt_entity: "localtrack-timeline-card: 'entity' fehlt",
       falsche_entity: "localtrack-timeline-card: 'entity' muss ein person.* oder device_tracker.* sein",
+      vorschau_karte: "Beispielweg, keine echten Daten",
+      vorschau_zuhause: "Zuhause",
+      vorschau_arbeit: "Arbeit",
     },
   },
   en: {
@@ -455,6 +458,9 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       km: "{wert} km",
       fehlt_entity: "localtrack-timeline-card: 'entity' is missing",
       falsche_entity: "localtrack-timeline-card: 'entity' must be a person.* or device_tracker.*",
+      vorschau_karte: "Sample route, no real data",
+      vorschau_zuhause: "Home",
+      vorschau_arbeit: "Work",
     },
   },
 };
@@ -748,6 +754,34 @@ function withTimeout(promise, ms, code = "timeout") {
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
 }
 
+/* ── card picker preview (#1304, M53, decision E11) ────────────────────── */
+
+/** True when `el` sits in Home Assistant's card picker. The picker puts each
+ *  preview into a `div.preview` inside the shadow root of `hui-card-picker`
+ *  (frontend `hui-card-picker.ts`), so the walk crosses shadow boundaries via
+ *  `host`. There both cards show a static preview with sample data and make
+ *  no WebSocket, tile or Nominatim request. The edit dialog's live preview
+ *  (`hui-card` with `preview`) is a real card and keeps loading real data. */
+function inCardPicker(el) {
+  for (let node = el?.parentNode || el?.host; node; node = node.parentNode || node.host) {
+    if (node.tagName === "HUI-CARD-PICKER") return true;
+  }
+  return false;
+}
+
+/** Sample day of the timeline preview: [kind, start, end, name key or km]. */
+const PREVIEW_DAY = [
+  ["stay", "08:00", "09:05", "vorschau_zuhause"],
+  ["move", "09:05", "09:30", 4.2],
+  ["stay", "09:30", "12:10", "vorschau_arbeit"],
+  ["move", "12:10", "12:35", 4.6],
+  ["stay", "12:35", "15:00", "vorschau_zuhause"],
+];
+
+/** Sample route for the preview map, in a 0-100 × 0-40 box; stays as dots. */
+const PREVIEW_ROUTE = "12,30 20,26 31,24 40,18 52,15 63,12 74,11 86,10";
+const PREVIEW_STAYS = [[12, 30], [86, 10]];
+
 /* ── the card ───────────────────────────────────────────────────────────── */
 
 const LOCALTRACK_SHARED_UI_STYLES = BuschUI.cardStyles + `
@@ -818,7 +852,8 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._config && BuschUI.configsEqual(this._config, nextConfig)) return;
     this._config = nextConfig;
     this._build();
-    if (this._hass) this._loadDay();
+    if (this._preview) this._showPreview();
+    else if (this._hass) this._firstLoad();
   }
 
   set hass(hass) {
@@ -827,9 +862,9 @@ class LocaltrackTimelineCard extends HTMLElement {
     // The title needs `hass` to resolve a friendly name, and `_build` runs
     // before `hass` ever arrives — so it has to be refreshed here too.
     this._syncTitle();
-    if (!this._config) return;
+    if (!this._config || this._preview) return;
     if (!previous) {
-      this._loadDay();
+      this._firstLoad();
       return;
     }
     const before = previous.states?.[this._config.entity];
@@ -846,7 +881,27 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
   }
 
+  /** Load once the card is in the page (#1304, M53): only then does it know
+   *  whether it sits in the card picker. Home Assistant sets `hass` before
+   *  attaching a card; `connectedCallback` takes over in that case. */
+  _firstLoad() {
+    if (this.isConnected === false) {
+      this._needsLoad = true;
+      return;
+    }
+    if (inCardPicker(this)) {
+      this._showPreview();
+      return;
+    }
+    this._loadDay();
+  }
+
   connectedCallback() {
+    if (this._config && this._hass && !this._preview && inCardPicker(this)) {
+      this._showPreview();
+      return;
+    }
+    if (this._preview) return;
     if (this._config && this._hass && (!this._map || this._needsLoad)) {
       this._needsLoad = false;
       this._loadDay();
@@ -984,6 +1039,8 @@ class LocaltrackTimelineCard extends HTMLElement {
            (Regel 1, Pruefung 3: zwei Textelemente duerfen sich nicht
            schneiden). Gemessen gefunden, nicht vermutet. */
         .map-wrap.busy .leaflet-control-container { visibility: hidden; }
+        /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
+        .map svg.preview-route { display: block; width: 100%; height: 100%; }
         .scrubber {
           display: flex; gap: ${BuschUI.tokens.space2}; align-items: center;
           margin-top: var(--ha-space-2, 8px);
@@ -1090,7 +1147,7 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   async _loadDay({ preserveInteraction = false } = {}) {
-    if (!this._hass || !this._config) return;
+    if (!this._hass || !this._config || this._preview) return;
     if (this._loading) {
       this._pendingLoad = { preserveInteraction };
       return;
@@ -1430,6 +1487,73 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._segmentsEl.scrollTop = scrollTop;
     // Reverse geocoding filled in labels above; also refresh the scrubber label.
     if (this._points.length) this._renderScrubber();
+  }
+
+  /** Static card picker preview (#1304, M53): a drawn sample route and a
+   *  sample day from the dictionary, no Leaflet, no request. */
+  _showPreview() {
+    this._preview = true;
+    this._loadGeneration += 1;
+    this._pendingLoad = null;
+    if (this._refreshTimer) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+    const t = this._t;
+    const locale = this._hass?.locale?.language || BROWSER_LANG;
+    this._clearDayDetails();
+    this._showStatus("");
+    const svgNs = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNs, "svg");
+    svg.setAttribute("class", "preview-route");
+    svg.setAttribute("viewBox", "0 0 100 40");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.setAttribute("aria-hidden", "true");
+    const route = document.createElementNS(svgNs, "polyline");
+    route.setAttribute("points", PREVIEW_ROUTE);
+    route.setAttribute("fill", "none");
+    route.setAttribute("vector-effect", "non-scaling-stroke");
+    route.style.stroke = "var(--error-color, #e53935)";
+    route.style.strokeWidth = "4px";
+    svg.appendChild(route);
+    for (const [x, y] of PREVIEW_STAYS) {
+      const dot = document.createElementNS(svgNs, "circle");
+      dot.setAttribute("cx", String(x));
+      dot.setAttribute("cy", String(y));
+      dot.setAttribute("r", "1.6");
+      dot.style.fill = "var(--primary-color, #03a9f4)";
+      svg.appendChild(dot);
+    }
+    this._mapEl.replaceChildren(svg);
+    this._mapEl.setAttribute("role", "img");
+    this._mapEl.setAttribute("aria-label", t.vorschau_karte);
+    const at = (clock) => {
+      const [h, m] = clock.split(":").map(Number);
+      const date = new Date();
+      date.setHours(h, m, 0, 0);
+      return date;
+    };
+    const rows = PREVIEW_DAY.map(([kind, start, end, detail], index) => {
+      const row = document.createElement("div");
+      row.className = `segment ${kind}`;
+      row.dataset.index = String(index);
+      const cell = (name, text) => {
+        const node = document.createElement("div");
+        node.className = name;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      };
+      const seconds = (at(end) - at(start)) / 1000;
+      [
+        cell("dot"),
+        cell("times", `${formatClock(at(start), locale)}–${formatClock(at(end), locale)}`),
+        cell("label", kind === "stay" ? t[detail] : t.strecke),
+        cell("meta", kind === "stay" ? formatDuration(seconds, t)
+          : fillText(t.km, { wert: BuschUI.formatNumber(detail, "en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })),
+      ].forEach((node) => row.appendChild(node));
+      return row;
+    });
+    this._segmentsEl.replaceChildren(...rows);
   }
 
   _showStatus(text) {
@@ -1822,7 +1946,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._entity = this._config.entity;
     this._zone = this._config.zone;
     this._build();
-    if (this._hass) this._start();
+    if (this._preview) this._showPreview();
+    else if (this._hass) this._firstStart();
   }
 
   set hass(hass) {
@@ -1833,7 +1958,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     // ruft diesen Setter im Sekundentakt, ein Monat kostet aber eine echte
     // Abfrage. Nachgeladen wird nur bei Monats-, Personen- oder Ortswechsel.
     this._fillPickers();
-    if (first) this._start();
+    if (this._preview) return;
+    if (first) this._firstStart();
     // A failed `localtrack/stats` is asked again after 60 s, so a short
     // WebSocket hiccup does not leave the person menu empty for good.
     else if (!this._tracked && this._trackedFailedAt
@@ -1849,7 +1975,51 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 
   connectedCallback() {
+    if (this._preview) return;
+    if (this._config && this._hass && inCardPicker(this)) {
+      this._showPreview();
+      return;
+    }
     if (this._config && this._hass && !this._result) this._start();
+  }
+
+  /** Start once the card is in the page (#1304, M53), see the timeline's
+   *  `_firstLoad`: in the card picker the preview stays static. */
+  _firstStart() {
+    if (this.isConnected === false) return;   // connectedCallback starts
+    if (inCardPicker(this)) {
+      this._showPreview();
+      return;
+    }
+    this._start();
+  }
+
+  /** Static card picker preview (#1304, M53): a sample month for the
+   *  configured person and zone, without `localtrack/stats` or `zone_time`. */
+  _showPreview() {
+    this._preview = true;
+    if (!this._month) {
+      const now = new Date();
+      this._month = { year: now.getFullYear(), month: now.getMonth() + 1 };
+    }
+    const { year, month } = this._month;
+    const t = this._t;
+    this._fillPickers();
+    this._labelEl.textContent = `${t.monate[month - 1]} ${year}`;
+    const range = monthRange(year, month);
+    const pad = (n) => String(n).padStart(2, "0");
+    const days = [];
+    for (let day = 1; day <= range.days; day += 1) {
+      const weekday = new Date(year, month - 1, day).getDay();
+      if (weekday === 0 || weekday === 6) continue;
+      const net = (7 * 60 + ((day * 37) % 90)) * 60;
+      days.push({ date: `${year}-${pad(month)}-${pad(day)}`, net_s: net, gross_s: net + 45 * 60 });
+    }
+    const sum = (key) => days.reduce((total, d) => total + d[key], 0);
+    this._result = { days, days_present: days.length, total_net_s: sum("net_s"),
+      total_gross_s: sum("gross_s"), total_visits: days.length };
+    this._render(range.days, { year, month });
+    this._showStatus("");
   }
 
   _start() {
@@ -2051,7 +2221,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   /* ── Laden ──────────────────────────────────────────────────────────── */
 
   async _loadTracked() {
-    if (this._tracked || this._trackedLoading) return;
+    if (this._tracked || this._trackedLoading || this._preview) return;
     this._trackedLoading = true;
     try {
       const stats = await withTimeout(this._hass.callWS({ type: "localtrack/stats" }), LOAD_TIMEOUT_MS);
@@ -2070,7 +2240,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 
   async _load() {
-    if (!this._hass || !this._config) return;
+    if (!this._hass || !this._config || this._preview) return;
     if (this._loading) { this._pending = true; return; }
     this._loading = true;
     const wanted = { ...this._month, entity: this._entity, zone: this._zone };
