@@ -82,3 +82,8 @@ eingestellten Sprache.
   `custom:localtrack-timeline-card`; die Optionen sind unverändert. Die
   Landkarten-Karte `localtrack-map-card` heißt seit dem 06.09.2026
   `busch-map-card` und liegt in ha-busch-cards.
+
+## Geprüft
+
+**18.11.2026 · 0.6.3, Buschcheck Etappe A (#1264, Tag `v0.6.3`)** — Auswahlmenüs der Zonenzeit-Karte ohne innerHTML (Namen als Text, M1); fehlgeschlagenes localtrack/stats wird erneut versucht. Erste Node-Testbasis mit 27 Fällen (M20). 27-zonetime sichtgeprüft (bytegleich). Abschlusslauf `karten-20261118-115150-b741a7` grün (38/38, 908 Node-Tests), `--beleg-pruefen` gleich; `node --check`, `ui-regeln-pruefen.py` (0), `hacs-contract-lint.py` (0), Kern bytegleich.
+
