@@ -785,6 +785,8 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._loadGeneration = 0;
     this._refreshTimer = null;
     this._needsLoad = false;
+    this._releaseTimer = null;
+    this._leafletStyle = null;
     this._dayStarts = new Map();
   }
 
@@ -872,6 +874,32 @@ class LocaltrackTimelineCard extends HTMLElement {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
     }
+    // Free the Leaflet map of a card that stays unhooked (#1304, M52): its
+    // resize listener on window would keep map, shadow DOM and points alive.
+    // One tick later, so a card that is only moved keeps its map.
+    if (this._map && !this._releaseTimer) {
+      this._releaseTimer = setTimeout(() => {
+        this._releaseTimer = null;
+        if (!this.isConnected) this._releaseMap();
+      }, 0);
+    }
+  }
+
+  /** Remove the Leaflet map and forget its layers; the next load builds a new
+   *  one on the current map element. */
+  _releaseMap() {
+    if (!this._map) return;
+    try {
+      this._map.remove();
+    } catch (error) {
+      console.warn("localtrack-timeline-card: Leaflet map not removed", error);
+    }
+    this._map = null;
+    this._markerLayer = null;
+    this._polyline = null;
+    this._markers = [];
+    this._currentMarker = null;
+    this._needsLoad = true;
   }
 
   getCardSize() {
@@ -890,6 +918,9 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   _build() {
+    // A map built on the element this markup replaces is freed; the next
+    // load builds a new one on the new element (#1304, M52).
+    if (this._mapEl) this._releaseMap();
     // sink-ok: static skeleton, only style constants (shared styles, BuschUI tokens)
     this.shadowRoot.innerHTML = `
       <style>
@@ -1019,6 +1050,10 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._scrubberEl = this.shadowRoot.querySelector(".scrubber input");
     this._scrubLabelEl = this.shadowRoot.querySelector(".scrub-label");
     this._segmentsEl = this.shadowRoot.querySelector(".segments");
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver.observe(this._mapEl);
+    }
     // New elements: the text caches of _applyTexts/_syncTitle start empty.
     this._textsLang = null;
     this._titleText = null;
@@ -1197,9 +1232,13 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (!this._leaflet) this._leaflet = await loadLeaflet();
     const L = this._leaflet;
     if (!this._map) {
-      const style = document.createElement("style");
-      style.textContent = LEAFLET_CSS;
-      this.shadowRoot.appendChild(style);
+      // One stylesheet per shadow root, also after the map was freed (M52).
+      if (!this._leafletStyle || this._leafletStyle.parentNode !== this.shadowRoot) {
+        const style = document.createElement("style");
+        style.textContent = LEAFLET_CSS;
+        this.shadowRoot.appendChild(style);
+        this._leafletStyle = style;
+      }
 
       L.Icon.Default.mergeOptions({
         iconUrl: LEAFLET_IMAGES.markerIcon,
