@@ -40,5 +40,21 @@ jobs:
             if not m: print(p,'kein Shared-UI-Block');continue
             ok=hashlib.sha256(m[2].encode()).hexdigest()==m[1]; print(p,'ok' if ok else 'ABWEICHUNG'); ok or sys.exit(1)
           PY
+      - name: Vendor blocks match their hash
+        run: |
+          python3 - <<'PY'
+          # sha256 over the bytes between the BEGIN line and the END line, i.e. upstream as embedded.
+          import hashlib,pathlib,re,sys
+          bad=False;found=0
+          for p in sorted(pathlib.Path('dist').glob('*.js')):
+            text=p.read_bytes()
+            blocks=re.findall(rb'/\* BEGIN VENDOR ([\w.-]+) (\S+) sha256:([0-9a-f]{64}) \*/\n(.*?)^/\* END VENDOR \1 \*/',text,re.S|re.M)
+            if not len(blocks)==text.count(b'/* BEGIN VENDOR ')==text.count(b'/* END VENDOR '): print(p,'vendor marker ABWEICHUNG');bad=True
+            for name,ver,digest,body in blocks:
+              found+=1;ok=hashlib.sha256(body).hexdigest()==digest.decode()
+              print('vendor',name.decode(),'ok' if ok else 'ABWEICHUNG '+ver.decode()+' '+str(p));bad|=not ok
+          if not found: print('vendor kein Block');bad=True
+          sys.exit(1 if bad else 0)
+          PY
       - name: Tests
         run: if ls tests/*.test.js >/dev/null 2>&1; then node --test tests/*.test.js; else echo "no tests"; fi

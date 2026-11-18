@@ -12,6 +12,15 @@ CSS als injizierter `<style>`, die vier Marker-PNGs als `data:`-URIs (Abschnitt
 `BEGIN VENDOR` bis `END VENDOR`). Nachgeladen werden nur Kartenkacheln. Das
 erklärt die Dateigröße von rund 270 kB.
 
+Zwei Vendor-Blöcke mit Hash im Marker (`/* BEGIN VENDOR <name> 1.9.4 sha256:… */` …
+`/* END VENDOR <name> */`, Hash über die Bytes zwischen den Markern, geprüft am 18.11.2026):
+`leaflet` ist `leaflet.js` von `unpkg.com/leaflet@1.9.4/dist/`, nur ohne Sourcemap-Zeile
+(Hash `dc71f8a6…`, gleich wie in `ha-busch-cards`); `leaflet-css` enthält `leaflet.css` und die
+PNGs als JS-Literale (CRLF → LF, `url(images/…)` → `data:`-URIs). Der CI-Schritt „Vendor blocks
+match their hash“ prüft beide Hashes; `tests/vendor.test.js` macht die zwei CSS-Änderungen
+rückgängig und vergleicht mit dem Upstream-Hash von `leaflet.css`. Leaflet-Updates laufen in
+beiden Repos gleichzeitig.
+
 Auch die gemeinsame UI-Basis (Editorbasis, Config-/Event-/Tastaturhelfer,
 Header- und Statusprimitives) steckt direkt in der Datei. Ein gemeinsames Paket
 über mehrere Repos würde einen Build-Schritt oder eine zusätzliche
