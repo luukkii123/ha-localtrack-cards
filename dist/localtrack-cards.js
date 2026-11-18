@@ -1019,6 +1019,9 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._scrubberEl = this.shadowRoot.querySelector(".scrubber input");
     this._scrubLabelEl = this.shadowRoot.querySelector(".scrub-label");
     this._segmentsEl = this.shadowRoot.querySelector(".segments");
+    // New elements: the text caches of _applyTexts/_syncTitle start empty.
+    this._textsLang = null;
+    this._titleText = null;
 
     const config = this._config || {};
     this._syncTitle();
@@ -1128,8 +1131,13 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   /** Static labels that are not part of the data: they change with the
-   *  language and therefore cannot be baked into the markup of `_build`. */
+   *  language and therefore cannot be baked into the markup of `_build`.
+   *  Written only when the language changed (#1304 M22): `set hass` runs on
+   *  every state change in the house and must not touch the DOM. */
   _applyTexts() {
+    const sprache = this._hass ? cardLanguage(this._hass) : BROWSER_LANG;
+    if (sprache === this._textsLang) return;
+    this._textsLang = sprache;
     const t = this._t;
     if (this._dateEl) {
       this._dateEl.title = t.tag_waehlen;
@@ -1148,11 +1156,15 @@ class LocaltrackTimelineCard extends HTMLElement {
     // `person.anna`. An explicit `title:` in the card config still wins; the
     // entity id is only the last resort for an entity that has no name yet.
     const state = this._hass?.states?.[this._config.entity];
-    this._titleEl.textContent =
+    const text =
       this._config.title ||
       state?.attributes?.friendly_name ||
       this._config.entity ||
       "";
+    // Only a different text is written (#1304 M22), header attributes with it.
+    if (text === this._titleText) return;
+    this._titleText = text;
+    this._titleEl.textContent = text;
     BuschUI.header({node:this.shadowRoot.querySelector(".header"),titleNode:this._titleEl});
   }
 
@@ -1855,6 +1867,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._entityEl = root.querySelector(".pick-entity");
     this._zoneEl = root.querySelector(".pick-zone");
     this._tableEl = root.querySelector("table");
+    // New elements: text and menu caches start empty (#1304 M22).
+    this._textsLang = null;
+    this._titleText = null;
+    this._pickerRefs = null;
 
     BuschUI.action({node:root.querySelector(".prev"),label:this._t.voriger_monat,onClick:() => this._shiftMonth(-1)});
     BuschUI.action({node:root.querySelector(".next"),label:this._t.naechster_monat,onClick:() => this._shiftMonth(1)});
@@ -1872,10 +1888,14 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 
   /** Static labels of the markup — they change with the language, so they
-   *  cannot be baked into the template of `_build`. */
+   *  cannot be baked into the template of `_build`. Written only when the
+   *  language changed (#1304 M22). */
   _applyTexts() {
     const root = this.shadowRoot;
     if (!root) return;
+    const sprache = this._hass ? cardLanguage(this._hass) : BROWSER_LANG;
+    if (sprache === this._textsLang) return;
+    this._textsLang = sprache;
     const t = this._t;
     const setzen = (sel, text) => {
       const el = root.querySelector(sel);
@@ -1899,7 +1919,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._applyTexts();
     const zone = this._hass?.states?.[this._zone];
     const name = zone?.attributes?.friendly_name || this._zone || "";
-    this._titleEl.textContent = this._config.title || name || this._t.titel_ersatz;
+    const text = this._config.title || name || this._t.titel_ersatz;
+    if (text === this._titleText) return;
+    this._titleText = text;
+    this._titleEl.textContent = text;
     BuschUI.header({node:this.shadowRoot.querySelector(".head"),titleNode:this._titleEl});
   }
 
@@ -1914,11 +1937,26 @@ class LocaltrackZoneTimeCard extends HTMLElement {
 
   /* ── Menüs ──────────────────────────────────────────────────────────── */
 
+  /** Zone ids from hass.states, scanned again only when `hass.entities` (the
+   *  entity registry) is a new object (#1304 M22): a new zone arrives with a
+   *  registry update, a sensor tick does not. Without `hass.entities` the
+   *  states object is the key, and an empty list is always scanned again. */
+  _zoneIds() {
+    const hass = this._hass;
+    const key = hass?.entities ?? hass?.states;
+    if (key !== this._zoneIdsKey || !this._zoneIdList?.length) {
+      this._zoneIdsKey = key;
+      this._zoneIdList = Object.keys(hass?.states || {}).filter((id) => id.startsWith("zone."));
+    }
+    return this._zoneIdList;
+  }
+
   _zoneOptions() {
     const states = this._hass?.states || {};
     const zones = [];
-    for (const [id, state] of Object.entries(states)) {
-      if (!id.startsWith("zone.")) continue;
+    for (const id of this._zoneIds()) {
+      const state = states[id];
+      if (!state) continue;
       const a = state.attributes || {};
       // Ohne Mittelpunkt und Radius lässt sich nichts rechnen — solche
       // Einträge gehören nicht ins Menü, sonst wählt man ins Leere.
@@ -1937,6 +1975,16 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const people = this._tracked && this._tracked.length
       ? this._tracked
       : [this._entity].filter(Boolean);
+    // Menus and title depend only on these references (#1304 M22): the person
+    // and zone state objects, the zone list, the choice and the language. A
+    // foreign state change keeps all of them, so it ends here.
+    const states = this._hass.states || {};
+    const zoneIds = this._zoneIds();
+    const refs = [this._tracked, this._entity, this._zone, cardLanguage(this._hass), zoneIds,
+      ...people.map((id) => states[id]), ...zoneIds.map((id) => states[id])];
+    const last = this._pickerRefs;
+    if (last && last.length === refs.length && refs.every((ref, i) => ref === last[i])) return;
+    this._pickerRefs = refs;
     this._setOptions(this._entityEl, people.map((id) => ({
       id,
       name: this._hass.states?.[id]?.attributes?.friendly_name || id,
@@ -1946,7 +1994,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   }
 
   _setOptions(select, items, selected) {
-    const signature = items.map((i) => i.id).join("|") + "#" + selected;
+    // Names belong to the signature: a renamed zone or person is shown.
+    const signature = JSON.stringify([items.map((i) => [i.id, i.name]), selected]);
     if (select.dataset.signature === signature) return;   // nichts zu tun
     select.dataset.signature = signature;
     // Nodes, not markup: friendly_name is chosen by a device or integration
