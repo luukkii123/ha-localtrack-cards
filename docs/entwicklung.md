@@ -67,7 +67,11 @@ eingestellten Sprache.
 
 - **Timeline:** Aufenthalte werden zuerst gegen die Zonen aus Home Assistant
   benannt (kleinste passende Zone gewinnt), sonst „Aufenthalt" oder mit
-  `reverse_geocode` der Nominatim-Name. Zwei Aufenthalte am selben Ort stapeln
+  `reverse_geocode` der Nominatim-Name. Die Liste wartet nicht auf
+  Nominatim: sie steht sofort mit Zonennamen bzw. „Aufenthalt", die Ortsnamen
+  werden danach je Zeile in die Beschriftung geschrieben, ohne die Liste neu
+  aufzubauen (Fokus und Scroll bleiben). Die Zonen werden einmal je
+  `hass.states` vorgefiltert, nicht je Punkt oder Reglerschritt. Zwei Aufenthalte am selben Ort stapeln
   ihre Nadeln, die Liste zeigt beide. Liegen mehr Punkte vor als `max_points`,
   vereinfacht die Integration sie mit Douglas-Peucker, bevor die Karte sie sieht.
   Steht das Datum auf heute, lädt die Karte nach einer Positionsänderung

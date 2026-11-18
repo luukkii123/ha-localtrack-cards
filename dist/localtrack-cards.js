@@ -710,18 +710,26 @@ function segmentTrack(points, stayRadiusM, minStayMinutes, previous = null) {
 
 /* ── zone matching + reverse geocoding ──────────────────────────────────── */
 
-function findZone(hass, lat, lon) {
+/** The zones of `states` with centre and radius, filtered once per render
+ *  (#1304, M54) instead of scanning every state for every point. */
+function zoneList(states, ids) {
+  const zones = [];
+  for (const entityId of ids) {
+    const attributes = states[entityId]?.attributes;
+    if (!attributes) continue;
+    const { latitude, longitude, radius } = attributes;
+    if (latitude == null || longitude == null || radius == null) continue;
+    zones.push({ name: attributes.friendly_name || entityId, lat: latitude, lon: longitude, radius });
+  }
+  return zones;
+}
+
+/** Name of the smallest zone of `zones` that contains the point, or null. */
+function matchZone(zones, lat, lon) {
   let best = null;
-  for (const [entityId, state] of Object.entries(hass.states || {})) {
-    if (!entityId.startsWith("zone.")) continue;
-    const zoneLat = state.attributes.latitude;
-    const zoneLon = state.attributes.longitude;
-    const radius = state.attributes.radius;
-    if (zoneLat == null || zoneLon == null || radius == null) continue;
-    const distance = haversineMeters(zoneLat, zoneLon, lat, lon);
-    if (distance <= radius) {
-      if (!best || radius < best.radius) best = { name: state.attributes.friendly_name || entityId, radius };
-    }
+  for (const zone of zones) {
+    if (haversineMeters(zone.lat, zone.lon, lat, lon) <= zone.radius
+        && (!best || zone.radius < best.radius)) best = zone;
   }
   return best ? best.name : null;
 }
@@ -759,6 +767,9 @@ function reverseGeocode(lat, lon) {
   return geocodeChain;
 }
 reverseGeocode._cache = new Map();
+
+/** The cached name for a coordinate, or undefined when it was never asked. */
+reverseGeocode.known = (lat, lon) => reverseGeocode._cache.get(`${lat.toFixed(5)},${lon.toFixed(5)}`);
 
 /* ── time limit for WebSocket reads (#1287, M34) ─────────────────────── */
 
@@ -1631,43 +1642,73 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   _zoneLabel(point) {
-    const zone = findZone(this._hass, point.lat, point.lon);
+    const zone = matchZone(this._zones(), point.lat, point.lon);
     if (zone) return zone;
     return this._t.unterwegs;
   }
 
-  async _renderSegments({ generation, day, preserveInteraction = false } = {}) {
-    const L = this._leaflet;
+  /** Zones with coordinates (#1304, M54). The ids are found again only for
+   *  a new `hass.entities` (a new zone comes with a registry update), as in
+   *  the zone-time card (M22); their states only for a new `hass.states`.
+   *  An empty id list is always scanned again. */
+  _zones() {
+    const hass = this._hass;
+    const states = hass?.states || {};
+    const key = hass?.entities ?? states;
+    if (key !== this._zoneIdsKey || !this._zoneIdList?.length) {
+      this._zoneIdsKey = key;
+      this._zoneIdList = Object.keys(states).filter((id) => id.startsWith("zone."));
+      this._zoneStates = null;
+    }
+    if (states !== this._zoneStates) {
+      this._zoneStates = states;
+      this._zoneCache = zoneList(states, this._zoneIdList);
+    }
+    return this._zoneCache;
+  }
+
+  /** The stay and move list. It is built at once with zone names (or
+   *  "Stay"); with `reverse_geocode` the place names of stays outside every
+   *  zone follow row by row (#1304, M54): the row's label is filled in place,
+   *  nothing is rebuilt, focus and scroll stay. Rows are kept by key. */
+  _renderSegments({ generation, day, preserveInteraction = false } = {}) {
     const t = this._t;
     const locale = this._hass?.locale?.language || "de";
     if (!this._segments.length) {
       if (this._segmentsEl.childElementCount) this._segmentsEl.replaceChildren();
       return;
     }
+    if ((generation !== undefined && generation !== this._loadGeneration)
+        || (day !== undefined && day !== this._day)) return;
+    const zones = this._zones();
     const currentRows = new Map(Array.from(this._segmentsEl.children, row =>
       [row.dataset.segmentKey, row]
     ));
     const rows = [];
+    const lookups = [];
     for (let i = 0; i < this._segments.length; i += 1) {
       const segment = this._segments[i];
       const startDate = new Date(segment.start * 1000);
       const endDate = new Date(segment.end * 1000);
       const times = `${formatClock(startDate, locale)}–${formatClock(endDate, locale)}`;
+      const key = `${segment.kind}:${segment.start}:${segment.end}`;
       let label;
       let meta;
       if (segment.kind === "stay") {
         const point = this._points[segment.startIndex];
-        label = findZone(this._hass, point.lat, point.lon) || t.aufenthalt;
-        if (this._config.reverse_geocode) {
-          const geoName = await reverseGeocode(point.lat, point.lon);
-          if (geoName) label = geoName;
+        const zone = matchZone(zones, point.lat, point.lon);
+        label = zone || t.aufenthalt;
+        // README: Nominatim names only stays outside every zone.
+        if (!zone && this._config.reverse_geocode) {
+          const known = reverseGeocode.known(point.lat, point.lon);
+          if (known) label = known;
+          else if (known === undefined) lookups.push({ key, point });
         }
         meta = formatDuration(segment.end - segment.start, t);
       } else {
         label = t.strecke;
         meta = fillText(t.km, { wert: BuschUI.formatNumber(segment.distance/1000,'en',{useGrouping:false,minimumFractionDigits:1,maximumFractionDigits:1}) });
       }
-      const key = `${segment.kind}:${segment.start}:${segment.end}`;
       let row = currentRows.get(key);
       if (row) currentRows.delete(key);
       else {
@@ -1682,14 +1723,14 @@ class LocaltrackTimelineCard extends HTMLElement {
       }
       row.dataset.index = String(i);
       row.querySelector(".times").textContent = times;
-      row.querySelector(".label").textContent = label;
+      // A name filled in earlier is in the geocode cache, so `label` has it.
+      const labelEl = row.querySelector(".label");
+      if (labelEl.textContent !== label) labelEl.textContent = label;
       row.querySelector(".meta").textContent = meta;
       rows.push(row);
     }
-    if ((generation !== undefined && generation !== this._loadGeneration)
-        || (day !== undefined && day !== this._day)) return;
-    // Snapshot immediately before reconciliation. If the user moved focus
-    // while reverse geocoding was pending, their new target wins.
+    // Snapshot immediately before reconciliation: a row that has to move
+    // keeps the focus it had.
     const activeBeforeCommit = this.shadowRoot.activeElement;
     const focusedRowBeforeCommit = activeBeforeCommit?.closest?.(".segment");
     const focusedKey = focusedRowBeforeCommit?.dataset.segmentKey;
@@ -1708,10 +1749,23 @@ class LocaltrackTimelineCard extends HTMLElement {
       const target = sameRow || rows[Math.min(focusedIndex, rows.length - 1)];
       target?.focus({ preventScroll: true });
     }
-    this._segmentsEl.scrollTop = scrollTop;
-    // Reverse geocoding filled in labels above; also refresh the scrubber
-    // label. A live refresh does not pan (#1304, M35).
+    if (this._segmentsEl.scrollTop !== scrollTop) this._segmentsEl.scrollTop = scrollTop;
+    // Refresh the scrubber label too. A live refresh does not pan (#1304, M35).
     if (this._points.length) this._renderScrubber({ pan: !preserveInteraction });
+    for (const { key, point } of lookups) this._fillPlaceName(key, point, day ?? this._day);
+  }
+
+  /** Writes the Nominatim name into the row with `key` once it is known.
+   *  A late answer for a row that is gone (other day, new segments) is
+   *  dropped; only the label's text changes. */
+  _fillPlaceName(key, point, day) {
+    reverseGeocode(point.lat, point.lon).then((name) => {
+      if (!name || day !== this._day) return;
+      const row = Array.from(this._segmentsEl.children)
+        .find((candidate) => candidate.dataset.segmentKey === key);
+      const labelEl = row?.querySelector(".label");
+      if (labelEl && labelEl.textContent !== name) labelEl.textContent = name;
+    });
   }
 
   /** Static card picker preview (#1304, M53): a drawn sample route and a
