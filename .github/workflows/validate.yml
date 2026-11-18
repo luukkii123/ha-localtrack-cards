@@ -179,7 +179,7 @@ jobs:
               bad = 0
               for path in files:
                   for line in findings(open(path, encoding='utf-8').read()):
-                      print(f'{path}:{line}: HTML sink interpolates ${{...}} without escape helper or // sink-ok: <reason>')
+                      print(f'{path}:{line}: HTML sink interpolates a template expression without escape helper or // sink-ok: <reason>')
                       bad += 1
               print(f'Sinks: {bad} finding(s) in {len(files)} file(s)' if bad else f'Sinks: ok ({len(files)} file(s))')
               return 1 if bad else 0
