@@ -379,6 +379,7 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       keine_berechtigung: "Keine Berechtigung für Local Track.",
       ladefehler: "Daten konnten nicht geladen werden.",
       ladefehler_grund: "Daten konnten nicht geladen werden: {grund}",
+      zeitueberschreitung: "Local Track antwortet nicht. Neuer Versuch beim nächsten Abruf.",
       aufenthalt: "Aufenthalt",
       strecke: "Strecke",
       unterwegs: "unterwegs",
@@ -423,6 +424,7 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       keine_berechtigung: "No permission for Local Track.",
       ladefehler: "Could not load the data.",
       ladefehler_grund: "Could not load the data: {grund}",
+      zeitueberschreitung: "Local Track is not answering. Trying again with the next fetch.",
       aufenthalt: "Stay",
       strecke: "Trip",
       unterwegs: "on the move",
@@ -701,6 +703,29 @@ function reverseGeocode(lat, lon) {
   return geocodeChain;
 }
 reverseGeocode._cache = new Map();
+
+/* ── time limit for WebSocket reads (#1287, M34) ─────────────────────── */
+
+/** Read limit for list and day fetches. */
+const LOAD_TIMEOUT_MS = 15000;
+
+/** Rejects with `{ code }` when `promise` has not settled after `ms`. A hung
+ *  call would otherwise hold the card's load lock forever and every later
+ *  refresh would quietly queue behind it. The late answer is ignored. */
+function withTimeout(promise, ms, code = "timeout") {
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(code);
+      error.code = code;
+      // Marks the card's own limit: Home Assistant may send a `timeout` code
+      // of its own, and that one keeps showing its reason.
+      error.timeoutMs = ms;
+      reject(error);
+    }, ms);
+  });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
 
 /* ── the card ───────────────────────────────────────────────────────────── */
 
@@ -1020,13 +1045,13 @@ class LocaltrackTimelineCard extends HTMLElement {
     try {
       await this._ensureMap();
       const bounds = localDayBounds(day);
-      const result = await this._hass.callWS({
+      const result = await withTimeout(this._hass.callWS({
         type: "localtrack/history",
         entity_id: this._config.entity,
         start: bounds.start.toISOString(),
         end: bounds.end.toISOString(),
         max_points: Number(this._config.max_points) || 2000,
-      });
+      }), LOAD_TIMEOUT_MS);
       if (this._day !== day || generation !== this._loadGeneration) return;
       // Snapshot the latest choice when the response is ready, not when the
       // request starts: the user may keep scrubbing while it is in flight.
@@ -1124,6 +1149,9 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
     if (code === "unauthorized") {
       return t.keine_berechtigung;
+    }
+    if (error?.timeoutMs) {
+      return t.zeitueberschreitung;
     }
     // Never swallow the rest: without the message the card says nothing that
     // helps, which is what sent this bug back as "es geht einfach nicht".
@@ -1510,6 +1538,7 @@ const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
       nicht_eingerichtet: "Local Track ist nicht eingerichtet — Einstellungen → Geräte & Dienste → Integration hinzufügen.",
       ladefehler: "Daten konnten nicht geladen werden.",
       ladefehler_grund: "Daten konnten nicht geladen werden: {grund}",
+      zeitueberschreitung: "Local Track antwortet nicht. Bitte später noch einmal versuchen.",
       fehlt_entity: "localtrack-zone-time-card: 'entity' fehlt",
       fehlt_zone: "localtrack-zone-time-card: 'zone' fehlt",
       monate: ["Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -1556,6 +1585,7 @@ const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
       nicht_eingerichtet: "Local Track is not set up — Settings → Devices & services → Add integration.",
       ladefehler: "Could not load the data.",
       ladefehler_grund: "Could not load the data: {grund}",
+      zeitueberschreitung: "Local Track is not answering. Please try again later.",
       fehlt_entity: "localtrack-zone-time-card: 'entity' is missing",
       fehlt_zone: "localtrack-zone-time-card: 'zone' is missing",
       monate: ["January", "February", "March", "April", "May", "June",
@@ -1915,7 +1945,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     if (this._tracked || this._trackedLoading) return;
     this._trackedLoading = true;
     try {
-      const stats = await this._hass.callWS({ type: "localtrack/stats" });
+      const stats = await withTimeout(this._hass.callWS({ type: "localtrack/stats" }), LOAD_TIMEOUT_MS);
       this._tracked = stats.tracked || [];
       this._trackedFailedAt = 0;
     } catch (error) {
@@ -1952,7 +1982,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         return;
       }
       const range = monthRange(wanted.year, wanted.month);
-      const result = await this._hass.callWS({
+      const result = await withTimeout(this._hass.callWS({
         type: "localtrack/zone_time",
         entity_id: wanted.entity,
         latitude: zone.attributes.latitude,
@@ -1962,7 +1992,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         end: range.end,
         min_visit_s: Math.round((this._config.min_visit_minutes ?? 5) * 60),
         max_gap_s: Math.round((this._config.max_gap_minutes ?? 30) * 60),
-      });
+      }), LOAD_TIMEOUT_MS);
       // Zwischenzeitlich umgeschaltet? Dann gehört diese Antwort nicht mehr
       // auf den Bildschirm.
       if (this._month.year !== wanted.year || this._month.month !== wanted.month
@@ -1994,6 +2024,9 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     }
     if (code === "not_found") {
       return t.nicht_eingerichtet;
+    }
+    if (error?.timeoutMs) {
+      return t.zeitueberschreitung;
     }
     const detail = error?.message || code;
     return detail ? fillText(t.ladefehler_grund, { grund: detail }) : t.ladefehler;
