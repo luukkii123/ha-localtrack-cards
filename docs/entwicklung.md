@@ -94,6 +94,8 @@ eingestellten Sprache.
 
 ## Geprüft
 
+**18.11.2026 · 0.6.5, Buschcheck Etappe C (#1277, Tag `v0.6.5`)** — XSS-Payloadtests für alle Karten und CI-Schritt Sinks (M19), Shared UI 0.4.0. Sichtbar unverändert. 60 Node-Tests. Abschlusslauf `karten-20261118-143236-199107` grün (55/55, 2159 Node-Tests, Block `statisch` mit `sinks` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe B am Bild geprüft (Sonnet), Abweichungen gewollt oder Rauschen (Uhrzeit, Kacheln, Markenlogo aus dem Netz).
+
 **18.11.2026 · 0.6.4, Buschcheck Etappe B (#1269, Tag `v0.6.4`)** — Leaflet 1.9.4 JS und CSS als Vendor-Blöcke mit Hash, CI meldet `vendor leaflet ok` (M46); Testkit (M5). 31 Node-Tests. Keine sichtbare Änderung. Abschlusslauf `karten-20261118-131312-6dd1c4` grün (51/51, 1003 Node-Tests, Block `statisch` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe A: 1836/1901 bytegleich, Rest Uhrzeit-/Animationsrauschen.
 
 **18.11.2026 · 0.6.3, Buschcheck Etappe A (#1264, Tag `v0.6.3`)** — Auswahlmenüs der Zonenzeit-Karte ohne innerHTML (Namen als Text, M1); fehlgeschlagenes localtrack/stats wird erneut versucht. Erste Node-Testbasis mit 27 Fällen (M20). 27-zonetime sichtgeprüft (bytegleich). Abschlusslauf `karten-20261118-115150-b741a7` grün (38/38, 908 Node-Tests), `--beleg-pruefen` gleich; `node --check`, `ui-regeln-pruefen.py` (0), `hacs-contract-lint.py` (0), Kern bytegleich.
