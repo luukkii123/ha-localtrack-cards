@@ -64,9 +64,11 @@ test("timeline: hung day fetch → timeout error after 15 s, lock free, next ref
   assert.equal(card._overlayEl.textContent, texte.zeitueberschreitung);
   assert.equal(card._overlayEl.style.display, "");
 
-  // The tracker moves: the 30 s refresh timer is the next tick.
-  // patchState keeps the old stamp, so the new last_updated is given here.
-  ha.patchState("person.a", { state: "home", last_updated: new clock.Date().toISOString() });
+  // The tracker moves: the 30 s refresh timer is the next tick. Only a new
+  // position triggers it (#1304, M35). patchState keeps the old stamp, so
+  // the new last_updated is given here.
+  ha.patchState("person.a", { state: "home", last_updated: new clock.Date().toISOString(),
+    attributes: { latitude: 50, longitude: 8 } });
   card.hass = ha.hass;
   await clock.advance(30000);
   assert.equal(ha.count("localtrack/history"), 2, "the next tick fetches again");

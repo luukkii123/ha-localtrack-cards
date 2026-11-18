@@ -555,15 +555,45 @@ function formatDuration(seconds, texte) {
  * range for the map to highlight.
  */
 function computeSegments(points, stayRadiusM, minStayMinutes) {
-  const segments = [];
-  if (!points.length) return segments;
+  return segmentTrack(points, stayRadiusM, minStayMinutes).segments;
+}
 
-  const closeSegment = (from, to, startIndex, endIndex) => {
-    if (to - from < 30) return null; // under 30 s: not a real stop
+/**
+ * `computeSegments` that can continue an earlier run (#1304, M35).
+ *
+ * The scan below is a state machine whose state is reset to "candidate starts
+ * at point i" every time a point leaves the running centroid. Every stay that
+ * ended before the last candidate (`tailStart`) is therefore final: points
+ * appended later cannot change it. With `previous` (the result for a prefix
+ * of the same `points`) only the scan from `tailStart` and the moves after
+ * the last final stay are computed again; the result equals a full run.
+ * Returns `{ segments, stays, tailStart, kept }`, `kept` = number of stays
+ * taken over unchanged from `previous`.
+ */
+function segmentTrack(points, stayRadiusM, minStayMinutes, previous = null) {
+  const stays = [];
+  let from = 0;
+  let prefix = [];
+  if (previous && previous.tailStart < points.length) {
+    from = previous.tailStart;
+    for (const stay of previous.stays) {
+      if (stay.startIndex >= from) break;
+      stays.push(stay);
+    }
+    if (stays.length) {
+      const lastKept = previous.segments.indexOf(stays[stays.length - 1]);
+      prefix = previous.segments.slice(0, lastKept + 1);
+    }
+  }
+  const kept = stays.length;
+  if (!points.length) return { segments: [], stays, tailStart: 0, kept };
+
+  const closeSegment = (start, end, startIndex, endIndex) => {
+    if (end - start < 30) return null; // under 30 s: not a real stop
     return {
       kind: "stay",
-      start: from,
-      end: to,
+      start,
+      end,
       startIndex,
       endIndex,
       lat: 0,
@@ -572,26 +602,25 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
     };
   };
 
-  const closeMove = (from, to, startIndex, endIndex) => {
+  const closeMove = (start, end, startIndex, endIndex) => {
     let distance = 0;
     for (let i = startIndex; i < endIndex; i += 1) {
       distance += haversineMeters(
         points[i].lat, points[i].lon, points[i + 1].lat, points[i + 1].lon
       );
     }
-    const duration = to - from;
+    const duration = end - start;
     if (distance < 25 && duration < 120) return null; // noise between two stops
-    return { kind: "move", start: from, end: to, startIndex, endIndex, distance };
+    return { kind: "move", start, end, startIndex, endIndex, distance };
   };
 
   // Running sum for a stable centroid without re-summing on every point.
   let sumLat = 0;
   let sumLon = 0;
   let count = 0;
-  let stayStart = points[0].ts;
-  let stayStartIndex = 0;
-  let lastIndex = 0; // last point of the current stay candidate
-  let lastMoveEndIndex = -1;
+  let stayStart = points[from].ts;
+  let stayStartIndex = from;
+  let lastIndex = from; // last point of the current stay candidate
 
   const flushStay = (endIndex) => {
     const segment = closeSegment(
@@ -600,11 +629,11 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
     if (segment) {
       segment.lat = sumLat / count;
       segment.lon = sumLon / count;
-      segments.push(segment);
+      stays.push(segment);
     }
   };
 
-  for (let i = 0; i < points.length; i += 1) {
+  for (let i = from; i < points.length; i += 1) {
     const point = points[i];
     if (count === 0) {
       sumLat = point.lat;
@@ -628,7 +657,6 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
       const stayEnd = points[lastIndex].ts;
       if (stayEnd - stayStart >= minStayMinutes * 60) {
         flushStay(lastIndex);
-        lastMoveEndIndex = lastIndex;
       }
       // Start a new candidate at this point.
       sumLat = point.lat;
@@ -639,19 +667,17 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
       lastIndex = i;
     }
   }
+  const tailStart = stayStartIndex;
   // Trailing candidate.
   if (count > 0 && points[lastIndex].ts - stayStart >= minStayMinutes * 60) {
     flushStay(lastIndex);
   }
 
-  // Insert the moves between consecutive stays.
-  const result = [];
-  const stays = segments;
-  for (let i = 0; i < stays.length; i += 1) {
+  // Insert the moves between consecutive stays, from the first new stay on.
+  const result = prefix;
+  for (let i = kept; i < stays.length; i += 1) {
     const stay = stays[i];
-    const prevEnd = i === 0 ? 0 : stays[i - 1].endIndex;
-    const prevStart = i === 0 ? null : stays[i - 1];
-    if (prevStart === null) {
+    if (i === 0) {
       // Before the first stay there may be an initial move from the first point.
       if (stay.startIndex > 0) {
         const move = closeMove(
@@ -659,11 +685,14 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
         );
         if (move) result.push(move);
       }
-    } else if (stay.startIndex > prevEnd + 1) {
-      const move = closeMove(
-        points[prevEnd].ts, stay.start, prevEnd, stay.startIndex
-      );
-      if (move) result.push(move);
+    } else {
+      const prevEnd = stays[i - 1].endIndex;
+      if (stay.startIndex > prevEnd + 1) {
+        const move = closeMove(
+          points[prevEnd].ts, stay.start, prevEnd, stay.startIndex
+        );
+        if (move) result.push(move);
+      }
     }
     result.push(stay);
   }
@@ -676,7 +705,7 @@ function computeSegments(points, stayRadiusM, minStayMinutes) {
     if (move) result.push(move);
   }
 
-  return result;
+  return { segments: result, stays, tailStart, kept };
 }
 
 /* ── zone matching + reverse geocoding ──────────────────────────────────── */
@@ -754,6 +783,26 @@ function withTimeout(promise, ms, code = "timeout") {
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
 }
 
+/* ── live refresh of today (#1304, M35) ───────────────────────────────── */
+
+/** Delay between a position change and the refresh: a drive sends many
+ *  updates, one fetch covers them. */
+const LIVE_DELAY_MS = 30000;
+
+/** A live refresh appends only while the last load is younger than this.
+ *  Older (a long hidden tab, a reconnect, an import that wrote earlier
+ *  points), it fetches the whole day again: the last known point is no
+ *  longer a safe start. */
+const LIVE_FULL_AFTER_MS = 15 * 60 * 1000;
+
+/** True when the tracker moved: a battery or other attribute update changes
+ *  `last_updated` too, but brings no new point. */
+function positionChanged(before, now) {
+  const a = before?.attributes || {};
+  const b = now?.attributes || {};
+  return a.latitude !== b.latitude || a.longitude !== b.longitude;
+}
+
 /* ── card picker preview (#1304, M53, decision E11) ────────────────────── */
 
 /** True when `el` sits in Home Assistant's card picker. The picker puts each
@@ -822,6 +871,21 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._releaseTimer = null;
     this._leafletStyle = null;
     this._dayStarts = new Map();
+    // Live refresh (#1304, M35): what the loaded points are, for appending.
+    this._pointsDay = null;
+    this._pointsFull = false;
+    this._loadedAt = 0;
+    this._segmentState = null;
+    this._stayPins = [];
+    this._liveDue = false;
+    this._onVisible = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      this._stopWaitingForVisible();
+      if (this._liveDue) {
+        this._liveDue = false;
+        if (this._day === this._todayString()) this._loadDay({ preserveInteraction: true });
+      }
+    };
   }
 
   /** Dictionary section for the active language. `setConfig` may run before
@@ -869,16 +933,39 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
     const before = previous.states?.[this._config.entity];
     const now = hass.states?.[this._config.entity];
-    const today = this._todayString();
-    if (this._day === today && before && now && before.last_updated !== now.last_updated) {
-      // Only live-refresh while looking at today; past days do not change.
-      if (!this._refreshTimer) {
-        this._refreshTimer = setTimeout(() => {
-          this._refreshTimer = null;
-          this._loadDay({ preserveInteraction: true });
-        }, 30000);
-      }
+    // Only a moved tracker brings a new point (#1304, M35); only today
+    // changes, past days do not.
+    if (before && now && before !== now && positionChanged(before, now)
+        && this._day === this._todayString()) {
+      this._scheduleLive();
     }
+  }
+
+  /** One live refresh `LIVE_DELAY_MS` after the first position change. */
+  _scheduleLive() {
+    if (this._refreshTimer) return;
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      // A hidden tab loads nothing; it catches up once when shown again.
+      if (typeof document !== "undefined" && document.hidden) {
+        this._liveDue = true;
+        this._waitForVisible();
+        return;
+      }
+      this._loadDay({ preserveInteraction: true });
+    }, LIVE_DELAY_MS);
+  }
+
+  _waitForVisible() {
+    if (this._visibleListening || typeof document === "undefined") return;
+    this._visibleListening = true;
+    document.addEventListener("visibilitychange", this._onVisible);
+  }
+
+  _stopWaitingForVisible() {
+    if (!this._visibleListening) return;
+    this._visibleListening = false;
+    document.removeEventListener("visibilitychange", this._onVisible);
   }
 
   /** Load once the card is in the page (#1304, M53): only then does it know
@@ -915,11 +1002,13 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    const hadWork = this._loading || this._refreshTimer;
+    const hadWork = this._loading || this._refreshTimer || this._liveDue;
     if (this._refreshTimer) {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = null;
     }
+    this._liveDue = false;
+    this._stopWaitingForVisible();
     if (hadWork) {
       this._loadGeneration += 1;
       this._pendingLoad = null;
@@ -954,6 +1043,9 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._polyline = null;
     this._markers = [];
     this._currentMarker = null;
+    this._endMarker = null;
+    this._stayPins = [];
+    this._pointsDay = null;
     this._needsLoad = true;
   }
 
@@ -1156,6 +1248,11 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._needsLoad = false;
     const generation = ++this._loadGeneration;
     const day = this._day;
+    const maxPoints = Number(this._config.max_points) || 2000;
+    // A live refresh asks only for the points after the last known one
+    // (#1304, M35); see `_canAppend` for when it fetches the whole day.
+    const append = preserveInteraction && this._canAppend(day, maxPoints);
+    const lastPoint = append ? this._points[this._points.length - 1] : null;
     if (!preserveInteraction) this._clearDayDetails();
     if (!preserveInteraction) this._showStatus(this._t.laden);
     try {
@@ -1164,17 +1261,35 @@ class LocaltrackTimelineCard extends HTMLElement {
       const result = await withTimeout(this._hass.callWS({
         type: "localtrack/history",
         entity_id: this._config.entity,
-        start: bounds.start.toISOString(),
+        // The integration reads `ts >= start`: the last point comes back
+        // and is dropped below by its timestamp.
+        start: append ? new Date(lastPoint.ts * 1000).toISOString() : bounds.start.toISOString(),
         end: bounds.end.toISOString(),
-        max_points: Number(this._config.max_points) || 2000,
+        max_points: maxPoints,
       }), LOAD_TIMEOUT_MS);
       if (this._day !== day || generation !== this._loadGeneration) return;
+      if (append) {
+        const fresh = (result.points || []).filter((point) => point.ts > lastPoint.ts);
+        if (result.simplified || this._points.length + fresh.length > maxPoints) {
+          // Together over max_points: the server has to thin out the whole
+          // day, appending would be wrong. The whole day follows at once.
+          this._pointsDay = null;
+          this._pendingLoad = { preserveInteraction: true };
+          return;
+        }
+        this._loadedAt = Date.now();
+        if (fresh.length) await this._appendPoints(fresh, { generation, day });
+        return;
+      }
       // Snapshot the latest choice when the response is ready, not when the
       // request starts: the user may keep scrubbing while it is in flight.
       const selectedTimestamp = preserveInteraction
         ? this._points?.[Number(this._scrubberEl?.value)]?.ts
         : undefined;
       this._points = result.points || [];
+      this._pointsDay = day;
+      this._pointsFull = !(result.simplified || (result.total ?? 0) > this._points.length);
+      this._loadedAt = Date.now();
       this._scrubberEl.disabled = this._points.length === 0;
       // Set the new bound before restoring an index; range inputs clamp a
       // value immediately against their current max.
@@ -1188,13 +1303,14 @@ class LocaltrackTimelineCard extends HTMLElement {
       }
       this._scrubberEl.closest(".scrubber").style.display =
         this._points.length && this._config.show_scrubber !== false ? "" : "none";
-      this._segments = computeSegments(
+      this._segmentState = segmentTrack(
         this._points,
         Number(this._config.stay_radius_m) || 150,
         Number(this._config.min_stay_minutes) || 10
       );
-      this._renderTrack();
-      await this._renderSegments({ generation, day });
+      this._segments = this._segmentState.segments;
+      this._renderTrack({ preserveInteraction });
+      await this._renderSegments({ generation, day, preserveInteraction });
       if (this._points.length === 0) {
         this._showStatus(this._t.keine_punkte);
       } else {
@@ -1211,6 +1327,36 @@ class LocaltrackTimelineCard extends HTMLElement {
         void this._loadDay(this._day === day ? pending : {});
       }
     }
+  }
+
+  /** Appending is safe only on top of a complete, recent load of the same
+   *  day with a drawn line (#1304, M35). Otherwise the whole day: after a
+   *  day change, a gap (`LIVE_FULL_AFTER_MS`), a server-thinned day
+   *  (`max_points` reached) or a freed map. */
+  _canAppend(day, maxPoints) {
+    return this._pointsDay === day && this._pointsFull
+      && this._points.length > 1 && this._points.length < maxPoints
+      && Date.now() - this._loadedAt < LIVE_FULL_AFTER_MS
+      && Boolean(this._map && this._polyline && this._segmentState);
+  }
+
+  /** Appends `fresh` to the day: line, end point and pins of the tail only,
+   *  segments from the last open stay on. The map keeps its view. */
+  async _appendPoints(fresh, { generation, day }) {
+    this._points.push(...fresh);
+    this._scrubberEl.max = String(this._points.length - 1);
+    this._segmentState = segmentTrack(
+      this._points,
+      Number(this._config.stay_radius_m) || 150,
+      Number(this._config.min_stay_minutes) || 10,
+      this._segmentState
+    );
+    this._segments = this._segmentState.segments;
+    for (const point of fresh) this._polyline.addLatLng([point.lat, point.lon]);
+    const last = this._points[this._points.length - 1];
+    if (this._endMarker) this._endMarker.setLatLng([last.lat, last.lon]);
+    this._renderStayPins(this._segmentState.kept);
+    await this._renderSegments({ generation, day, preserveInteraction: true });
   }
 
   _clearDayDetails() {
@@ -1313,7 +1459,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
   }
 
-  _renderTrack() {
+  _renderTrack({ preserveInteraction = false } = {}) {
     const L = this._leaflet;
     if (!this._map) return;
 
@@ -1321,11 +1467,14 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._markers) this._markers.forEach((marker) => this._map.removeLayer(marker));
     this._markers = [];
     this._currentMarker = null;
+    this._endMarker = null;
+    this._stayPins = [];
     if (this._markerLayer) this._markerLayer.clearLayers();
     this._markerLayer = L.layerGroup();
     const latLngs = this._points.map((point) => [point.lat, point.lon]);
     if (latLngs.length === 0) {
-      this._map.setView([0, 0], 2);
+      this._polyline = null;
+      if (!preserveInteraction) this._map.setView([0, 0], 2);
       this._markerLayer.addTo(this._map);
       return;
     }
@@ -1342,33 +1491,13 @@ class LocaltrackTimelineCard extends HTMLElement {
 
     if (latLngs.length > 1) {
       L.circleMarker(latLngs[0], { radius: 5, color: startColor, fillColor: startColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
-      L.circleMarker(latLngs[latLngs.length - 1], { radius: 5, color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
+      this._endMarker = L.circleMarker(latLngs[latLngs.length - 1], { radius: 5, color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
     }
 
-    this._map.fitBounds(L.latLngBounds(latLngs).pad(0.2));
+    // A live refresh keeps the user's view (#1304, M35, P13).
+    if (!preserveInteraction) this._map.fitBounds(L.latLngBounds(latLngs).pad(0.2));
 
-    // One numbered pin per stay, numbered in visit order.
-    let stayNumber = 0;
-    this._segments.forEach((segment) => {
-      if (segment.kind !== "stay") return;
-      stayNumber += 1;
-      const point = this._points[segment.startIndex];
-      if (!point) return;
-      // `interactive: false` ist Absicht und nicht Kosmetik: die Nadel ist
-      // eine Beschriftung der Landkarte, kein Bedienelement. Ohne das faengt
-      // sie Klicks ab, die dem Verschieben der Karte gelten — und zwei
-      // Aufenthalte am selben Ort legen zwei anklickbare Nadeln uebereinander.
-      L.marker([point.lat, point.lon], {
-        interactive: false,
-        keyboard: false,
-        icon: L.divIcon({
-          className: "",
-          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:12px;font-weight:600;overflow:hidden;">${stayNumber}</div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
-        }),
-      }).addTo(this._markerLayer);
-    });
+    this._renderStayPins(0);
 
     // Attach the finished group to the map last: Leaflet needs `_map` set on a
     // circle marker before its first `_update`, which does not happen reliably
@@ -1376,10 +1505,36 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._markerLayer.addTo(this._map);
 
     this._map.invalidateSize();
-    this._renderScrubber();
+    this._renderScrubber({ pan: !preserveInteraction });
   }
 
-  _renderScrubber() {
+  /** One numbered pin per stay, numbered in visit order. Pins of the first
+   *  `kept` stays stay as they are; the rest is drawn again (#1304, M35). */
+  _renderStayPins(kept) {
+    const L = this._leaflet;
+    const stays = this._segments.filter((segment) => segment.kind === "stay");
+    for (const pin of this._stayPins.splice(kept)) this._markerLayer.removeLayer(pin);
+    for (let i = this._stayPins.length; i < stays.length; i += 1) {
+      const point = this._points[stays[i].startIndex];
+      // `interactive: false` ist Absicht und nicht Kosmetik: die Nadel ist
+      // eine Beschriftung der Landkarte, kein Bedienelement. Ohne das faengt
+      // sie Klicks ab, die dem Verschieben der Karte gelten — und zwei
+      // Aufenthalte am selben Ort legen zwei anklickbare Nadeln uebereinander.
+      const pin = L.marker([point.lat, point.lon], {
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: "",
+          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:12px;font-weight:600;overflow:hidden;">${i + 1}</div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        }),
+      }).addTo(this._markerLayer);
+      this._stayPins.push(pin);
+    }
+  }
+
+  _renderScrubber({ pan = true } = {}) {
     if (!this._points.length || !this._map) return;
     const L = this._leaflet;
     const max = this._points.length - 1;
@@ -1401,7 +1556,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     }
     this._scrubLabelEl.textContent = `${formatClock(date, this._hass?.locale?.language || "de")} · ${zone}`;
     if (this._hass?.locale?.language) this._scrubLabelEl.style.fontFamily = "";
-    if (!this._map.getBounds().contains([point.lat, point.lon])) {
+    if (pan && !this._map.getBounds().contains([point.lat, point.lon])) {
       this._map.panTo([point.lat, point.lon]);
     }
   }
@@ -1412,7 +1567,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     return this._t.unterwegs;
   }
 
-  async _renderSegments({ generation, day } = {}) {
+  async _renderSegments({ generation, day, preserveInteraction = false } = {}) {
     const L = this._leaflet;
     const t = this._t;
     const locale = this._hass?.locale?.language || "de";
@@ -1485,8 +1640,9 @@ class LocaltrackTimelineCard extends HTMLElement {
       target?.focus({ preventScroll: true });
     }
     this._segmentsEl.scrollTop = scrollTop;
-    // Reverse geocoding filled in labels above; also refresh the scrubber label.
-    if (this._points.length) this._renderScrubber();
+    // Reverse geocoding filled in labels above; also refresh the scrubber
+    // label. A live refresh does not pan (#1304, M35).
+    if (this._points.length) this._renderScrubber({ pan: !preserveInteraction });
   }
 
   /** Static card picker preview (#1304, M53): a drawn sample route and a

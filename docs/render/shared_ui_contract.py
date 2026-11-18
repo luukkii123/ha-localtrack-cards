@@ -347,11 +347,18 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                   }
                   return nativeSetTimeout(callback, delay, ...args);
                 };
+                // Only a position change triggers the refresh (#1304, M35).
                 for (let i = 1; i <= 3; i += 1) {
+                  const person = card._hass.states['person.test'];
                   card.hass = {...card._hass, states: {...card._hass.states,
-                    'person.test': {...card._hass.states['person.test'],
-                      last_updated: `${lastUpdated}-live-${i}`}}};
+                    'person.test': {...person, last_updated: `${lastUpdated}-live-${i}`,
+                      attributes: {...person.attributes,
+                        latitude: (person.attributes.latitude ?? 52.52) + 0.0001 * i}}}};
                 }
+                // This check is about the live refresh that fetches the whole
+                // day again (it changes points before the last one); a load
+                // older than 15 min takes that path (gap, M35).
+                card._loadedAt = 0;
                 window.setTimeout = nativeSetTimeout;
                 let liveLoad;
                 const originalLoadDay = card._loadDay;
@@ -399,6 +406,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                 scrubber.value = String(card._points.length - 1);
                 const grown = [{...card._points[0], ts: card._points[0].ts - 1}, ...card._points];
                 card._hass.callWS = async () => ({points: grown});
+                card._loadedAt = 0;   // whole day again, see above (M35)
                 await originalLoadDay.call(card, {preserveInteraction: true});
                 const scrubberLastTimestampPreserved = card._points[Number(scrubber.value)]?.ts === oldLastTimestamp;
                 card._hass.callWS = previousCall;

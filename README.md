@@ -71,8 +71,9 @@ entity: person.beispiel
 
 Bedienung: Das **Datum** oben rechts wählt den Tag (Vorgabe heute). Der
 **Zeitregler** fährt die Route ab und zeigt Uhrzeit und Zone (oder
-„unterwegs"). Bei heutigem Datum lädt die Karte nach einer Positionsänderung
-nach einigen Sekunden nach.
+„unterwegs"). Bei heutigem Datum holt die Karte nach einer Positionsänderung
+nach rund 30 Sekunden nur die neuen Punkte nach; der Kartenausschnitt bleibt
+dabei stehen, und in einem verborgenen Tab wird erst beim Zurückkehren geladen.
 
 ## Verweildauer-Karte
 

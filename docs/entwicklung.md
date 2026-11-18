@@ -70,9 +70,18 @@ eingestellten Sprache.
   `reverse_geocode` der Nominatim-Name. Zwei Aufenthalte am selben Ort stapeln
   ihre Nadeln, die Liste zeigt beide. Liegen mehr Punkte vor als `max_points`,
   vereinfacht die Integration sie mit Douglas-Peucker, bevor die Karte sie sieht.
-  Steht das Datum auf heute, lädt die Karte nach einer Positionsänderung mit
-  rund 30 Sekunden Verzögerung nach; Scrubber, Fokus und Scroll bleiben dabei
-  erhalten.
+  Steht das Datum auf heute, lädt die Karte nach einer Positionsänderung
+  (`latitude`/`longitude`, nicht `last_updated`: ein Akkuwechsel lädt nichts)
+  mit rund 30 Sekunden Verzögerung nach, und zwar nur ab dem letzten Punkt
+  (`start` = dessen Zeitstempel; die Integration liest `ts >= start`, der
+  Grenzpunkt wird über `ts` verworfen). Die Linie wächst mit `addLatLng`, neu
+  segmentiert wird nur ab dem letzten offenen Aufenthalt (`segmentTrack`,
+  gleiches Ergebnis wie ein voller Lauf). Den ganzen Tag holt sie bei
+  Tageswechsel, wenn der letzte Abruf älter als 15 Minuten ist (Lücke) und
+  wenn `max_points` erreicht ist (dann dünnt die Integration aus). Ein
+  verborgener Tab lädt nicht und holt beim Zurückkehren einmal nach.
+  Ausschnitt, Scrubber, Fokus und Scroll bleiben erhalten (kein `fitBounds`,
+  kein `panTo` beim Nachladen).
 - **Verweildauer:** Die Karte rechnet nicht selbst, alle Zahlen kommen aus
   `localtrack/zone_time`. Die Menüs füllen sich aus `localtrack/stats` (Personen)
   und den Zonen von Home Assistant mit Mittelpunkt und Radius. Die Vorbelegung
