@@ -783,6 +783,35 @@ function withTimeout(promise, ms, code = "timeout") {
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
 }
 
+/* ── finished days and months from a cache (#1304, M51) ─────────────── */
+
+/** At most this many answers of finished periods, shared by all cards. */
+const PAST_CACHE_LIMIT = 24;
+const pastResults = new Map();
+
+/** The cached answer to `message`, or undefined. `end` (ms) is the end of
+ *  the asked period; a period that has not ended yet (today, this month) is
+ *  never answered from the cache, its data still grow. A hit becomes the
+ *  newest entry (LRU). The key is the whole message, every parameter. */
+function cachedPast(message, end) {
+  if (!(end < Date.now())) return undefined;
+  const key = JSON.stringify(message);
+  const hit = pastResults.get(key);
+  if (hit === undefined) return undefined;
+  pastResults.delete(key);
+  pastResults.set(key, hit);
+  return hit;
+}
+
+/** Keeps the answer of a finished period; the oldest entry goes first. */
+function rememberPast(message, end, result) {
+  if (!(end < Date.now()) || !result) return;
+  const key = JSON.stringify(message);
+  pastResults.delete(key);
+  pastResults.set(key, result);
+  while (pastResults.size > PAST_CACHE_LIMIT) pastResults.delete(pastResults.keys().next().value);
+}
+
 /* ── live refresh of today (#1304, M35) ───────────────────────────────── */
 
 /** Delay between a position change and the refresh: a drive sends many
@@ -1131,6 +1160,14 @@ class LocaltrackTimelineCard extends HTMLElement {
            (Regel 1, Pruefung 3: zwei Textelemente duerfen sich nicht
            schneiden). Gemessen gefunden, nicht vermutet. */
         .map-wrap.busy .leaflet-control-container { visibility: hidden; }
+        /* Laedt mit altem Inhalt (#1304, M51): der bisherige Tag bleibt
+           gedimmt stehen, der Ladehinweis liegt durchscheinend darueber.
+           Kein Leeren, kein Layoutsprung. */
+        .map-overlay.stale {
+          background: color-mix(in srgb, var(--card-background-color, #fff) 60%, transparent);
+          color: var(--primary-text-color);
+        }
+        ha-card.stale .segments, ha-card.stale .scrubber { opacity: 0.55; }
         /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
         .map svg.preview-route { display: block; width: 100%; height: 100%; }
         .scrubber {
@@ -1191,6 +1228,8 @@ class LocaltrackTimelineCard extends HTMLElement {
       </ha-card>
     `;
 
+    this._cardEl = this.shadowRoot.querySelector("ha-card");
+    this._stale = false;
     this._titleEl = this.shadowRoot.querySelector(".title");
     this._dateEl = this.shadowRoot.querySelector("input[type=date]");
     this._mapEl = this.shadowRoot.querySelector(".map");
@@ -1253,21 +1292,32 @@ class LocaltrackTimelineCard extends HTMLElement {
     // (#1304, M35); see `_canAppend` for when it fetches the whole day.
     const append = preserveInteraction && this._canAppend(day, maxPoints);
     const lastPoint = append ? this._points[this._points.length - 1] : null;
-    if (!preserveInteraction) this._clearDayDetails();
-    if (!preserveInteraction) this._showStatus(this._t.laden);
+    const bounds = localDayBounds(day);
+    const message = {
+      type: "localtrack/history",
+      entity_id: this._config.entity,
+      // The integration reads `ts >= start`: the last point comes back
+      // and is dropped below by its timestamp.
+      start: append ? new Date(lastPoint.ts * 1000).toISOString() : bounds.start.toISOString(),
+      end: bounds.end.toISOString(),
+      max_points: maxPoints,
+    };
+    // A finished day seen before needs no request (#1304, M51).
+    const cached = append ? undefined : cachedPast(message, bounds.end.getTime());
+    let stale = false;
+    if (!preserveInteraction && !cached) {
+      // The day shown so far stays, dimmed, until the new one is there.
+      stale = this._points.length > 0;
+      if (!stale) this._clearDayDetails();
+      this._setStale(stale);
+      this._showStatus(this._t.laden);
+    }
     try {
       await this._ensureMap();
-      const bounds = localDayBounds(day);
-      const result = await withTimeout(this._hass.callWS({
-        type: "localtrack/history",
-        entity_id: this._config.entity,
-        // The integration reads `ts >= start`: the last point comes back
-        // and is dropped below by its timestamp.
-        start: append ? new Date(lastPoint.ts * 1000).toISOString() : bounds.start.toISOString(),
-        end: bounds.end.toISOString(),
-        max_points: maxPoints,
-      }), LOAD_TIMEOUT_MS);
+      const result = cached || await withTimeout(this._hass.callWS(message), LOAD_TIMEOUT_MS);
+      if (!cached && !append) rememberPast(message, bounds.end.getTime(), result);
       if (this._day !== day || generation !== this._loadGeneration) return;
+      this._setStale(false);
       if (append) {
         const fresh = (result.points || []).filter((point) => point.ts > lastPoint.ts);
         if (result.simplified || this._points.length + fresh.length > maxPoints) {
@@ -1318,6 +1368,14 @@ class LocaltrackTimelineCard extends HTMLElement {
       }
     } catch (error) {
       this._lastError = error;
+      if (stale && generation === this._loadGeneration) {
+        // Old content must not stand under the new date with an error.
+        this._setStale(false);
+        this._points = [];
+        this._segments = [];
+        this._pointsDay = null;
+        this._clearDayDetails();
+      }
       this._showStatus(this._errorMessage(error));
     } finally {
       this._loading = false;
@@ -1357,6 +1415,17 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._endMarker) this._endMarker.setLatLng([last.lat, last.lon]);
     this._renderStayPins(this._segmentState.kept);
     await this._renderSegments({ generation, day, preserveInteraction: true });
+  }
+
+  /** Loading with old content (#1304, M51): the shown day stays, dimmed and
+   *  `aria-busy`, the loading hint lies see-through over the old map. */
+  _setStale(on) {
+    if (Boolean(this._stale) === on) return;
+    this._stale = on;
+    this._cardEl?.classList.toggle("stale", on);
+    this._overlayEl?.classList.toggle("stale", on);
+    this._segmentsEl?.setAttribute("aria-busy", String(on));
+    this._mapWrapEl?.setAttribute("aria-busy", String(on));
   }
 
   _clearDayDetails() {
@@ -2008,6 +2077,9 @@ const ZONE_TIME_STYLES = `
     font-variant-numeric: tabular-nums;
   }
   table[hidden] { display: none; }
+  /* Laedt mit altem Inhalt (#1304, M51): der bisherige Monat bleibt gedimmt
+     stehen, bis der neue da ist. */
+  table.stale { opacity: 0.55; }
   /* Alle vier Kuerzungseigenschaften, auch min-width: 0 — Regel 1 verlangt sie
      an jedem einzeiligen Textcontainer. In einer Tabellenzelle wirkt min-width
      nicht (das Tabellenlayout bestimmt die Breite), aber die Regel ist
@@ -2402,22 +2474,77 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const wanted = { ...this._month, entity: this._entity, zone: this._zone };
     const t = this._t;
     this._labelEl.textContent = `${t.monate[this._month.month - 1]} ${this._month.year}`;
-    this._bodyEl.innerHTML = "";
-    this._footEl.innerHTML = "";
-    this._noteEl.textContent = "";
-    this._tableEl.hidden = true;
-    this._showStatus(t.laden);
+    let stale = false;
     try {
+      const request = this._zoneTimeRequest(wanted);
+      // A finished month seen before needs no request (#1304, M51).
+      const cached = request && cachedPast(request.message, request.end);
+      if (cached) {
+        void this._loadTracked();
+        this._result = cached;
+        this._render(request.days, wanted);
+        this._showStatus("");
+        return;
+      }
+      // The month shown so far stays, dimmed and aria-busy, until the new
+      // one is there; the hint goes into the note line instead of a status
+      // line above the table, so nothing jumps.
+      stale = Boolean(this._result) && !this._tableEl.hidden;
+      if (stale) {
+        this._setStale(true);
+        this._noteEl.textContent = t.laden;
+      } else {
+        this._bodyEl.innerHTML = "";
+        this._footEl.innerHTML = "";
+        this._noteEl.textContent = "";
+        this._tableEl.hidden = true;
+        this._showStatus(t.laden);
+      }
       await this._loadTracked();
-      const zone = this._hass.states?.[this._zone];
-      if (!zone || zone.attributes?.latitude == null) {
+      if (!request) {
+        this._setStale(false);
+        this._tableEl.hidden = true;
+        this._noteEl.textContent = "";
         this._showStatus(fillText(t.zone_ohne_koordinaten, { zone: this._zone }));
         this._bodyEl.innerHTML = "";
         this._footEl.innerHTML = "";
         return;
       }
-      const range = monthRange(wanted.year, wanted.month);
-      const result = await withTimeout(this._hass.callWS({
+      const result = await withTimeout(this._hass.callWS(request.message), LOAD_TIMEOUT_MS);
+      rememberPast(request.message, request.end, result);
+      // Zwischenzeitlich umgeschaltet? Dann gehört diese Antwort nicht mehr
+      // auf den Bildschirm.
+      if (this._month.year !== wanted.year || this._month.month !== wanted.month
+          || this._entity !== wanted.entity || this._zone !== wanted.zone) {
+        return;
+      }
+      this._result = result;
+      this._render(request.days, wanted);
+      this._showStatus("");
+    } catch (error) {
+      this._showStatus(this._errorMessage(error));
+      this._bodyEl.innerHTML = "";
+      this._footEl.innerHTML = "";
+      this._noteEl.textContent = "";
+      this._tableEl.hidden = true;
+    } finally {
+      this._setStale(false);
+      this._loading = false;
+      if (this._pending) { this._pending = false; this._load(); }
+    }
+  }
+
+  /** The `localtrack/zone_time` message for `wanted`, with the end of the
+   *  month in ms and its number of days; null while the zone has no
+   *  coordinates. */
+  _zoneTimeRequest(wanted) {
+    const zone = this._hass.states?.[wanted.zone];
+    if (!zone || zone.attributes?.latitude == null) return null;
+    const range = monthRange(wanted.year, wanted.month);
+    return {
+      days: range.days,
+      end: new Date(wanted.year, wanted.month, 1).getTime() - 1,
+      message: {
         type: "localtrack/zone_time",
         entity_id: wanted.entity,
         latitude: zone.attributes.latitude,
@@ -2427,24 +2554,16 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         end: range.end,
         min_visit_s: Math.round((this._config.min_visit_minutes ?? 5) * 60),
         max_gap_s: Math.round((this._config.max_gap_minutes ?? 30) * 60),
-      }), LOAD_TIMEOUT_MS);
-      // Zwischenzeitlich umgeschaltet? Dann gehört diese Antwort nicht mehr
-      // auf den Bildschirm.
-      if (this._month.year !== wanted.year || this._month.month !== wanted.month
-          || this._entity !== wanted.entity || this._zone !== wanted.zone) {
-        return;
-      }
-      this._result = result;
-      this._render(range.days, wanted);
-      this._showStatus("");
-    } catch (error) {
-      this._showStatus(this._errorMessage(error));
-      this._bodyEl.innerHTML = "";
-      this._footEl.innerHTML = "";
-    } finally {
-      this._loading = false;
-      if (this._pending) { this._pending = false; this._load(); }
-    }
+      },
+    };
+  }
+
+  /** Loading with old content (#1304, M51): the table stays, dimmed. */
+  _setStale(on) {
+    if (!this._tableEl || Boolean(this._stale) === on) return;
+    this._stale = on;
+    this._tableEl.classList.toggle("stale", on);
+    this._tableEl.setAttribute("aria-busy", String(on));
   }
 
   _errorMessage(error) {

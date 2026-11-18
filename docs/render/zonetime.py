@@ -17,6 +17,11 @@ Seit 09.09.2026 misst derselbe Lauf zusaetzlich `docs/ui-regeln.md`, Regel 1
 und 4, ueber `regeln.py`: `lauf_breiten` + `messe_text` bei 320, 480 und 960 px
 in hellem und dunklem Thema, davor `selbsttest` als Falsifikation der Messung.
 
+Seit #1304 (M51) die Variante **stale-loading**: Monatswechsel mit haengender
+Antwort, der alte Monat bleibt gedimmt mit `aria-busy` stehen, der Hinweis
+steht in der Notizzeile (Bilder `zonetime-320-light-stale-loading.png`,
+`zonetime-320-dark-stale-loading.png`).
+
 Auf diesem Server laeuft Playwright nur im Container. Der Aufruf braucht
 **beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
 (`HACS_DIR` = Pfad des hacs-Ordners auf dem Server)
@@ -114,6 +119,8 @@ PAGE = """<!doctype html>
 
   /* ── erfundener hass ───────────────────────────────────────────────────── */
   window.__ws = [];
+  window.__hangZoneTime = false;
+  window.__heldZoneTime = [];
   const ZONE_TIME_ANSWER = {
     entity_id: 'person.testperson',
     days: [
@@ -149,6 +156,11 @@ PAGE = """<!doctype html>
       window.__ws.push(msg);
       if (msg.type === 'localtrack/stats') {
         return Promise.resolve({ tracked: ['person.testperson', 'person.zweite'] });
+      }
+      /* Variante stale-loading (M51): eine Monatsantwort haengt, bis die
+         Messung sie freigibt. */
+      if (msg.type === 'localtrack/zone_time' && window.__hangZoneTime) {
+        return new Promise((resolve) => window.__heldZoneTime.push(() => resolve(ZONE_TIME_ANSWER)));
       }
       if (msg.type === 'localtrack/zone_time') return Promise.resolve(ZONE_TIME_ANSWER);
       return Promise.reject({ code: 'unknown_command', message: 'Unknown command.' });
@@ -383,6 +395,61 @@ with sync_playwright() as pw:
         return {"bild": name}
 
     lauf_breiten(page, breiten=(320,), messung=bild, vor_messung=voll_breit, hoehe=1600)
+
+    # ── Variante „stale-loading" (#1304, M51) ──────────────────────────────
+    # Monatswechsel mit haengender Antwort: der September bleibt gedimmt und
+    # aria-busy stehen, der Monatstitel nennt schon Oktober, der Ladehinweis
+    # steht in der Notizzeile (keine Statuszeile ueber der Tabelle, kein
+    # Sprung). Je Thema ein Bild, dazu Regel 1 in genau diesem Zustand.
+    # Oktober liegt nach der Uhr (25.09.) in der Zukunft und kommt deshalb
+    # nie aus dem Cache; danach zurueck auf September.
+    def stale_bild(p):
+        thema = p.evaluate("() => document.documentElement.dataset.theme")
+        p.evaluate("""() => {
+            window.__hangZoneTime = true;
+            window.__card.shadowRoot.querySelector('.next').click();
+        }""")
+        p.wait_for_timeout(300)
+        werte = p.evaluate("""() => {
+            const sr = window.__card.shadowRoot;
+            const tab = sr.querySelector('table');
+            const kopf = sr.querySelector('.head').getBoundingClientRect();
+            return {
+              ariaBusy: tab.getAttribute('aria-busy'),
+              deckkraft: Number(getComputedStyle(tab).opacity),
+              tabelleSichtbar: !tab.hidden,
+              zeilen: sr.querySelectorAll('tbody tr').length,
+              erste: sr.querySelector('tbody tr td.net').textContent.trim(),
+              statusVersteckt: sr.querySelector('.status').hidden,
+              notiz: sr.querySelector('.note').textContent.trim(),
+              monat: sr.querySelector('.month .label').textContent.trim(),
+              tabelleOben: Math.round(tab.getBoundingClientRect().top - kopf.top),
+            };
+        }""")
+        werte["regel1"] = messe_text(p, "localtrack-zone-time-card")
+        name = "zonetime-320-%s-stale-loading.png" % thema
+        p.locator("localtrack-zone-time-card").screenshot(path=str(OUT / name))
+        werte["bild"] = name
+        p.evaluate("""async () => {
+            window.__hangZoneTime = false;
+            for (const go of window.__heldZoneTime.splice(0)) go();
+            await new Promise((r) => setTimeout(r, 50));
+            window.__card.shadowRoot.querySelector('.prev').click();
+        }""")
+        p.wait_for_timeout(400)
+        werte["nachher"] = p.evaluate("""() => {
+            const sr = window.__card.shadowRoot;
+            return { ariaBusy: sr.querySelector('table').getAttribute('aria-busy'),
+                     monat: sr.querySelector('.month .label').textContent.trim() };
+        }""")
+        return werte
+
+    tabelle_oben = page.evaluate("""() => {
+        const sr = window.__card.shadowRoot;
+        return Math.round(sr.querySelector('table').getBoundingClientRect().top
+                          - sr.querySelector('.head').getBoundingClientRect().top);
+    }""")
+    stale = lauf_breiten(page, breiten=(320,), messung=stale_bild, vor_messung=voll_breit, hoehe=1600)
     page.close()
 
     # ── schmal ─────────────────────────────────────────────────────────────
@@ -510,6 +577,32 @@ checks["Regel 1: in jedem Lauf wurde etwas gemessen"] = all(
     l["messung"].get("geprueft", 0) > 0 for l in regel1["laeufe"]
 )
 
+# ── Variante stale-loading (M51) ──────────────────────────────────────────
+stale_laeufe = [l["messung"] for l in stale["laeufe"]]
+checks["stale-loading: zwei Bilder (hell, dunkel)"] = len(stale_laeufe) == 2
+checks["stale-loading: alter Monat bleibt sichtbar"] = all(
+    m["tabelleSichtbar"] and m["zeilen"] == 30 and m["erste"] == "8:12" for m in stale_laeufe
+)
+checks["stale-loading: aria-busy und gedimmt"] = all(
+    m["ariaBusy"] == "true" and m["deckkraft"] < 1 for m in stale_laeufe
+)
+checks["stale-loading: Titel nennt schon den neuen Monat"] = all(
+    m["monat"] == "Oktober 2026" for m in stale_laeufe
+)
+checks["stale-loading: Hinweis in der Notizzeile, keine Statuszeile"] = all(
+    m["statusVersteckt"] and m["notiz"] == "Lade …" for m in stale_laeufe
+)
+checks["stale-loading: kein Layoutsprung"] = all(
+    m["tabelleOben"] == tabelle_oben for m in stale_laeufe
+)
+checks["stale-loading: Regel 1 ohne Befund"] = all(
+    len(m["regel1"][k]) == 0 for m in stale_laeufe for k in ("ueberlauf", "ausserhalb", "ueberlappung")
+)
+checks["stale-loading: nach der Antwort nicht mehr busy"] = all(
+    m["nachher"]["ariaBusy"] == "false" and m["nachher"]["monat"] == "September 2026"
+    for m in stale_laeufe
+)
+
 report = {
     "breit": wide,
     "schmal": {k: narrow[k] for k in ("zeilen", "erste", "bruttoSichtbar", "balkenSichtbar")},
@@ -521,6 +614,8 @@ report = {
     "regel1_selbsttest": regel1_selbsttest,
     "regel1_zaehlung": zahlen,
     "regel4_bilder": bilder,
+    "stale_loading": stale,
+    "stale_loading_bilder": [m["bild"] for m in stale_laeufe],
     "console_errors": console,
     "page_errors": errors,
     "pruefungen": checks,

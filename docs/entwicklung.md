@@ -42,8 +42,8 @@ genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 
 | Skript | Prüft |
 | --- | --- |
-| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf |
-| `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen |
+| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf; Variante `stale-loading`: Tageswechsel mit hängender Antwort, alter Tag gedimmt mit `aria-busy` |
+| `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen; Variante `stale-loading`: Monatswechsel mit hängender Antwort, alter Monat gedimmt mit `aria-busy`, Hinweis in der Notizzeile |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext) |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |
 | `shared_ui_contract.py` | beide Karten und Editoren: lange Namen, Lade-, Leer-, Fehler- und Datenzustände, 44-px-Aktionsflächen, Tastaturfokus; erzeugt die Bilder unter `docs/visual-baselines/` |
@@ -82,6 +82,13 @@ eingestellten Sprache.
   verborgener Tab lädt nicht und holt beim Zurückkehren einmal nach.
   Ausschnitt, Scrubber, Fokus und Scroll bleiben erhalten (kein `fitBounds`,
   kein `panTo` beim Nachladen).
+- **Cache und Ladezustand:** Antworten für abgeschlossene Tage und Monate
+  (Ende vor jetzt) liegen in einem gemeinsamen LRU-Cache mit höchstens 24
+  Einträgen, Schlüssel ist die ganze Abfrage; heute und der laufende Monat
+  kommen nie daraus. Lädt ein anderer Tag oder Monat, bleibt der bisherige
+  Inhalt gedimmt mit `aria-busy` stehen (Timeline: Hinweis durchscheinend über
+  der Karte; Verweildauer: Hinweis in der Notizzeile statt einer Statuszeile
+  über der Tabelle). Scheitert der Abruf, verschwindet der alte Inhalt.
 - **Verweildauer:** Die Karte rechnet nicht selbst, alle Zahlen kommen aus
   `localtrack/zone_time`. Die Menüs füllen sich aus `localtrack/stats` (Personen)
   und den Zonen von Home Assistant mit Mittelpunkt und Radius. Die Vorbelegung

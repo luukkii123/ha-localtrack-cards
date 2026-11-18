@@ -30,6 +30,11 @@ Kartenwaehler (`div.preview` im Schatten von `hui-card-picker`). Belegt die
 statische Vorschau ohne WebSocket-, Kachel- und Nominatim-Abruf (Bilder
 `picker-preview.png`, `picker-preview-390.png`).
 
+Seit #1304 (M51) dazu **stale-loading**: Tageswechsel mit haengender Antwort,
+der bisherige Tag bleibt gedimmt mit `aria-busy` stehen, der Ladehinweis liegt
+durchscheinend ueber der Karte (Bilder `timeline-320-light-stale-loading.png`,
+`timeline-320-dark-stale-loading.png`).
+
 Auf diesem Server läuft Playwright nur im Container. Der Aufruf braucht
 **beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
 (`HACS_DIR` = Pfad des hacs-Ordners auf dem Server)
@@ -183,11 +188,18 @@ PAGE = """<!doctype html>
     },
     callWS(msg) {
       window.__wsCalls.push(msg);
+      /* Variante stale-loading (M51): ein Tagesabruf haengt, bis die
+         Messung ihn freigibt. */
+      if (msg.type === 'localtrack/history' && window.__hangHistory) {
+        return new Promise((resolve) => window.__heldHistory.push(() => resolve({ points })));
+      }
       if (msg.type === 'localtrack/history') return Promise.resolve({ points });
       return Promise.reject({ code: 'unknown_command' });
     },
     callService() { return Promise.resolve(); },
   };
+  window.__hangHistory = false;
+  window.__heldHistory = [];
   window.__hass = hass;
 </script>
 <script src="/localtrack-cards.js"></script>
@@ -643,6 +655,68 @@ try:
 
         lauf_breiten(page, breiten=(320,), messung=bild, vor_messung=voll_breit)
 
+        # ── Variante „stale-loading" (#1304, M51) ──────────────────────────
+        # Tageswechsel mit haengender Antwort: der heutige Tag bleibt gedimmt
+        # und aria-busy stehen (Liste, Zeitregler, Weg), der Ladehinweis
+        # liegt durchscheinend ueber der Karte. Gestern ist ein abgeschlossener
+        # Tag, aber noch nie gesehen, kommt also nicht aus dem Cache. Danach
+        # zurueck auf heute. Je Thema ein Bild, dazu Regel 1 in diesem Zustand.
+        def stale_bild(p):
+            thema = p.evaluate("() => document.documentElement.dataset.theme")
+            vorher = p.evaluate("""() => {
+                const sr = window.__card.shadowRoot;
+                return { zeilen: sr.querySelectorAll('.segment').length,
+                         listeOben: Math.round(sr.querySelector('.segments').getBoundingClientRect().top) };
+            }""")
+            p.evaluate("""() => {
+                const c = window.__card;
+                window.__hangHistory = true;
+                window.__heute = c._dateEl.value;
+                const d = new Date(); d.setDate(d.getDate() - (window.__staleSchritt = (window.__staleSchritt || 0) + 1));
+                const pad = (n) => String(n).padStart(2, '0');
+                c._dateEl.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                c._dateEl.dispatchEvent(new Event('change'));
+            }""")
+            p.wait_for_timeout(300)
+            werte = p.evaluate("""() => {
+                const sr = window.__card.shadowRoot;
+                const liste = sr.querySelector('.segments');
+                const ueber = sr.querySelector('.map-overlay');
+                return {
+                  zeilen: sr.querySelectorAll('.segment').length,
+                  listeOben: Math.round(liste.getBoundingClientRect().top),
+                  ariaBusyListe: liste.getAttribute('aria-busy'),
+                  ariaBusyKarte: sr.querySelector('.map-wrap').getAttribute('aria-busy'),
+                  deckkraftListe: Number(getComputedStyle(liste).opacity),
+                  hinweis: ueber.textContent.trim(),
+                  hinweisSichtbar: getComputedStyle(ueber).display !== 'none',
+                  hinweisDurchscheinend: getComputedStyle(ueber).backgroundColor,
+                  wegDa: sr.querySelectorAll('.leaflet-overlay-pane path').length > 0,
+                };
+            }""")
+            werte["vorher"] = vorher
+            werte["regel1"] = messe_text(p, "localtrack-timeline-card")
+            name = "timeline-320-%s-stale-loading.png" % thema
+            p.locator("localtrack-timeline-card").screenshot(path=str(OUT / name))
+            werte["bild"] = name
+            p.evaluate("""async () => {
+                const c = window.__card;
+                window.__hangHistory = false;
+                for (const go of window.__heldHistory.splice(0)) go();
+                await new Promise((r) => setTimeout(r, 100));
+                c._dateEl.value = window.__heute;
+                c._dateEl.dispatchEvent(new Event('change'));
+            }""")
+            p.wait_for_timeout(800)
+            werte["nachher"] = p.evaluate("""() => {
+                const sr = window.__card.shadowRoot;
+                return { ariaBusy: sr.querySelector('.segments').getAttribute('aria-busy'),
+                         hinweis: sr.querySelector('.map-overlay').textContent.trim() };
+            }""")
+            return werte
+
+        stale = lauf_breiten(page, breiten=(320,), messung=stale_bild, vor_messung=voll_breit)
+
         # ── Variante „mapcard" (#1304, M21) ────────────────────────────────
         # Je Reihenfolge eine frische Seite: einmal baut die Timeline zuerst
         # ihre Karte, einmal busch-map-card. Seitenfehler zaehlen je Seite.
@@ -718,6 +792,7 @@ report = {
     "regel4_bilder": bilder,
     "mapcard": mapcard,
     "picker_preview": picker,
+    "stale_loading": stale,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────
@@ -798,6 +873,24 @@ checks = {
         picker.get("zonenTabelleSichtbar") is True and picker.get("zonenZeilen", 0) >= 28,
     "picker-preview: keine Seitenfehler": picker["seitenfehler"] == [],
 }
+# stale-loading (#1304, M51): alter Tag bleibt gedimmt und aria-busy stehen.
+_stale = [l["messung"] for l in stale["laeufe"]]
+checks.update({
+    "stale-loading: zwei Bilder (hell, dunkel)": len(_stale) == 2,
+    "stale-loading: alte Liste bleibt stehen": all(
+        m["zeilen"] == m["vorher"]["zeilen"] and m["zeilen"] > 0 and m["wegDa"] for m in _stale),
+    "stale-loading: kein Layoutsprung": all(
+        m["listeOben"] == m["vorher"]["listeOben"] for m in _stale),
+    "stale-loading: aria-busy an Liste und Karte, gedimmt": all(
+        m["ariaBusyListe"] == "true" and m["ariaBusyKarte"] == "true" and m["deckkraftListe"] < 1
+        for m in _stale),
+    "stale-loading: Ladehinweis sichtbar": all(
+        m["hinweisSichtbar"] and m["hinweis"] == "Lade …" for m in _stale),
+    "stale-loading: Regel 1 ohne Befund": all(
+        len(m["regel1"][k]) == 0 for m in _stale for k in ("ueberlauf", "ausserhalb", "ueberlappung")),
+    "stale-loading: nach der Antwort nicht mehr busy": all(
+        m["nachher"]["ariaBusy"] == "false" and m["nachher"]["hinweis"] == "" for m in _stale),
+})
 for _lauf in mapcard["laeufe"]:
     _z = _lauf["zuerst"]
     checks.update({
