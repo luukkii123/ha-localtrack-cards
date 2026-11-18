@@ -1,6 +1,6 @@
-// BUSCH SHARED TESTKIT 1.0.0 sha256:0197167f3a368d8e7120d8ce8b2d007e6b56b45aeda63aebad069beaffba75d6 generated from shared-ui/testkit.cjs by scripts/sync-shared-ui.py; edit the source, not this copy
+// BUSCH SHARED TESTKIT 1.1.0 sha256:e19b141c837e60ccdbce6b2b5b49e3e541d189541b1b012cac80c9e3f8afa3c4 generated from shared-ui/testkit.cjs by scripts/sync-shared-ui.py; edit the source, not this copy
 'use strict';
-/* Busch shared Node test kit 1.0.0 (#1273, M5).
+/* Busch shared Node test kit 1.1.0 (#1273, M5; #1280, M19).
  *
  * One source for the card repos' `node --test` suites, synced verbatim into
  * `tests/_testkit.cjs` of each card repo by scripts/sync-shared-ui.py. Edit
@@ -12,13 +12,15 @@
  *   loadScript()          runs a card bundle in a vm sandbox and exposes top-level names
  *   createHass()          hass stand-in with per-type delay/reject/hang, subscriptions,
  *                         reconnect, delayed state echo, and counters per message type and bytes
+ *   XSS_PAYLOADS          shared XSS payloads for every text field of a card (S5.1)
+ *   activeMarkup()        img/svg/script elements and on* attributes in markup or a DOM tree
  *
  * Old repo mocks stay until a test that uses them is touched anyway.
  */
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const TESTKIT_VERSION = '1.0.0';
+const TESTKIT_VERSION = '1.1.0';
 
 /* ── Clock ─────────────────────────────────────────────────────────────── */
 
@@ -513,4 +515,60 @@ function createHass(options = {}) {
   return controller;
 }
 
-module.exports = { TESTKIT_VERSION, createClock, flush, createDom, createEnvironment, loadScript, createHass, matchesSelector };
+/* ── XSS probes (M19) ──────────────────────────────────────────────────── */
+
+/** One payload per attack shape (S5.1); put each into every text field a card renders. */
+const XSS_PAYLOADS = Object.freeze([
+  '<img src=x onerror=alert(1)>',
+  '"><svg onload=alert(1)>',
+  "'",
+  '`',
+  '&amp;',
+  'javascript:alert(1)',
+  '</option></select><img src=x onerror=alert(1)>',
+]);
+
+const ACTIVE_TAGS = new Set(['img', 'svg', 'script']);
+
+/** Findings in a markup string: 'img', 'svg', 'script' per element and '<tag>[on…]' per handler attribute. */
+function activeInMarkup(html) {
+  const found = [];
+  for (const tag of String(html).matchAll(/<([a-zA-Z][^\s/>]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g)) {
+    const name = tag[1].toLowerCase();
+    if (ACTIVE_TAGS.has(name)) found.push(name);
+    for (const attr of tag[2].matchAll(/([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g))
+      if (/^on/i.test(attr[1])) found.push(`${name}[${attr[1].toLowerCase()}]`);
+  }
+  return found;
+}
+
+/** Names of an element's attributes, for the testkit DOM and for a browser DOM. */
+function attributeNames(el) {
+  const attrs = el.attributes;
+  if (!attrs) return [];
+  return typeof attrs.length === 'number' ? Array.from(attrs, (a) => a.name) : Object.keys(attrs);
+}
+
+/**
+ * Active markup below `input` (a markup string or a DOM node, shadow roots included).
+ * Unparsed innerHTML of the testkit DOM is scanned as markup. An empty list means clean.
+ */
+function activeMarkup(input) {
+  if (input == null || typeof input !== 'object') return activeInMarkup(input ?? '');
+  const found = [];
+  const walk = (node) => {
+    if (node.nodeType === 1) {
+      const name = String(node.localName || node.tagName || '').toLowerCase();
+      if (ACTIVE_TAGS.has(name)) found.push(name);
+      for (const attr of attributeNames(node)) if (/^on/i.test(attr)) found.push(`${name}[${attr.toLowerCase()}]`);
+    }
+    for (const child of node.childNodes || []) walk(child);
+    if (typeof node._innerHTML === 'string' && node._innerHTML) found.push(...activeInMarkup(node._innerHTML));
+    if (node.shadowRoot) walk(node.shadowRoot);
+    if (node.content && node.content !== node) walk(node.content);
+  };
+  walk(input);
+  return found;
+}
+
+module.exports = { TESTKIT_VERSION, createClock, flush, createDom, createEnvironment, loadScript, createHass, matchesSelector, XSS_PAYLOADS, activeMarkup };

@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.3.2 sha256:03f8f2772ce4a11e5bc843226fea493d961f9119bc588f6187190e8bc5a663f2 */
-/** Busch UI 0.3.2 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.4.0 sha256:c6ac609b08854ff5a778506207a9bb31689a7fad5e9e7a9d39ab53c483fbd290 */
+/** Busch UI 0.4.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.3.2';
+  const sourceVersion = '0.4.0';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -71,10 +71,18 @@ const BuschUI = (() => {
     return !configsEqual(current,next);
   }
   function resolveMedia(config={},metadata={},defaultIcon='mdi:devices') {
-    const safe=value=>typeof value==='string'&&value.trim()&&!/^(?:javascript|vbscript|file):/i.test(value.trim())?value.trim():null;
+    // Allow list (S7.2): http(s), scheme-less relative or same-origin paths, raster data images.
+    // Browsers drop tab/newline inside URLs and leading control characters, so the scheme is checked without them.
+    const safe=value=>{if(typeof value!=='string'||!value.trim())return null;const url=value.trim(),bare=url.replace(/[\t\n\r]/g,'').replace(/^[\u0000-\u0020]+/,'');
+      return !/^[a-z][a-z0-9+.-]*:/i.test(bare)||/^(?:https?:|data:image\/(?:png|jpeg|webp|gif)[;,])/i.test(bare)?url:null;};
     const available=[metadata.entity_picture,metadata.device_picture,metadata.picture].map(safe).filter(Boolean),custom=safe(config.image),mode=config.display_mode||'auto';
     const images=mode==='icon'?[]:[...new Set((mode==='image'?[custom,...available]:[...available,custom]).filter(Boolean))];
     return {image:images[0]||null,images,icon:config.icon||metadata.icon||defaultIcon};
+  }
+  /** Card-side action gate (M16/M17). 'user' always may act; 'admin' only when the card opts in with admin_actions: true. Not a security boundary. */
+  function mayAct(hass,config,level='admin') {
+    if (level==='user') return true;
+    return !(config?.admin_actions===true&&hass?.user?.is_admin!==true);
   }
   function media(config,metadata,defaultIcon,className='card-icon') {
     const resolved=resolveMedia(config,metadata,defaultIcon),holder=document.createElement('span');
@@ -198,7 +206,7 @@ const BuschUI = (() => {
 .busch-ui-section>summary:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
 .busch-ui-validation{color:var(--error-color,#db4437);overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
 `;
-  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,action,section,cardStyles,editorStyles});
+  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,mayAct,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,action,section,cardStyles,editorStyles});
 })();
 /* END BUSCH SHARED UI */
 
