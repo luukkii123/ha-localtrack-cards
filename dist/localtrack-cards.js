@@ -1278,6 +1278,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         row.dataset.segmentKey = key;
         row.setAttribute("role", "button");
         row.tabIndex = 0;
+        // sink-ok: constants only
         row.innerHTML = '<div class="dot"></div><div class="times"></div>'
           + '<div class="label"></div><div class="meta"></div>';
       }
@@ -1678,6 +1679,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._month = null;
     this._result = null;
     this._tracked = null;
+    this._trackedFailedAt = 0;
+    this._trackedLoading = false;
     this._loading = false;
     this._pending = null;
   }
@@ -1712,6 +1715,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     // Abfrage. Nachgeladen wird nur bei Monats-, Personen- oder Ortswechsel.
     this._fillPickers();
     if (first) this._start();
+    // A failed `localtrack/stats` is asked again after 60 s, so a short
+    // WebSocket hiccup does not leave the person menu empty for good.
+    else if (!this._tracked && this._trackedFailedAt
+        && Date.now() - this._trackedFailedAt >= 60000) this._loadTracked();
   }
 
   getCardSize() { return 8; }
@@ -1873,21 +1880,34 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const signature = items.map((i) => i.id).join("|") + "#" + selected;
     if (select.dataset.signature === signature) return;   // nichts zu tun
     select.dataset.signature = signature;
-    select.innerHTML = items
-      .map((i) => `<option value="${i.id}">${i.name}</option>`)
-      .join("");
+    // Nodes, not markup: friendly_name is chosen by a device or integration
+    // (DHCP hostname, phone name), so `&`, `<` or a tag must stay plain text.
+    select.replaceChildren(...items.map((i) => {
+      const option = document.createElement("option");
+      option.value = i.id;
+      option.textContent = i.name;
+      return option;
+    }));
     if (selected) select.value = selected;
   }
 
   /* ── Laden ──────────────────────────────────────────────────────────── */
 
   async _loadTracked() {
-    if (this._tracked) return;
+    if (this._tracked || this._trackedLoading) return;
+    this._trackedLoading = true;
     try {
       const stats = await this._hass.callWS({ type: "localtrack/stats" });
       this._tracked = stats.tracked || [];
+      this._trackedFailedAt = 0;
     } catch (error) {
-      this._tracked = [];   // Menü fällt auf die konfigurierte Person zurück
+      // Only a success is cached. A failure stays null with a timestamp: the
+      // next _load, or the first hass update after 60 s, asks again. Until
+      // then the menu falls back to the configured person.
+      this._tracked = null;
+      this._trackedFailedAt = Date.now();
+    } finally {
+      this._trackedLoading = false;
     }
     this._fillPickers();
   }
@@ -2007,11 +2027,15 @@ class LocaltrackZoneTimeCard extends HTMLElement {
           <td class="bar">${entry ? `<div class="fill" style="width:${width}%"></div>` : ""}</td>
         </tr>`);
     }
+    // sink-ok: constants only
+    // (dictionary words, Intl dates, numbers; no state or entity text)
     this._bodyEl.innerHTML = rows.join("");
 
     const present = this._result.days_present || 0;
     this._tableEl.hidden = present === 0;
     const average = present ? this._result.total_net_s / present : 0;
+    // sink-ok: constants only
+    // (dictionary words, Intl dates, numbers; no state or entity text)
     this._footEl.innerHTML = `
       <tr>
         <td class="day">${t.summe}</td>
