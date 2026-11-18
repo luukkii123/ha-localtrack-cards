@@ -40,6 +40,153 @@ jobs:
             if not m: print(p,'kein Shared-UI-Block');continue
             ok=hashlib.sha256(m[2].encode()).hexdigest()==m[1]; print(p,'ok' if ok else 'ABWEICHUNG'); ok or sys.exit(1)
           PY
+      - name: Sinks
+        run: |
+          python3 - dist/*.js <<'PY'
+          #!/usr/bin/env python3
+          # Sinks (M19, S5.5): report every innerHTML/outerHTML assignment and insertAdjacentHTML call
+          # whose expression (up to the end of the statement, also across lines) interpolates `${`
+          # without an escape helper and without `// sink-ok: <reason>` on the same or the previous line.
+          # Arguments: bundle files (default dist/*.js). Vendor blocks are upstream code and skipped.
+          # Exit 1 with file:line per finding. Standard library only; the body also runs as a heredoc.
+          import glob, re, sys
+
+          ESCAPES = ('escapeHtml(', 'calEscape(')
+          SINK = re.compile(r'\.(?:inner|outer)HTML\s*\+?=(?!=)|\.insertAdjacentHTML\s*\(')
+          MARK = re.compile(r'//\s*sink-ok:\s*\S')
+          VENDOR = re.compile(r'/\* BEGIN VENDOR .*?/\* END VENDOR [^\n]*?\*/', re.S)
+          REGEX_BEFORE = set('(,=:[!&|?{};+-*%<>~^') | {''}
+          KEYWORD = re.compile(r'(?<![\w$.])(?:return|typeof|case|in|of|else|do|yield|await|void|delete|instanceof|new)\s*$')
+          CONTINUES_BEFORE = set('+-*/%=&|?:,(<>!~^[{.')
+          CONTINUES_AFTER = set('+-*/%&|?:.,=<>')
+
+
+          class Scan:
+              def __init__(self, text):
+                  self.s, self.found = text, []
+
+              def string(self, i, quote):
+                  s = self.s
+                  while i < len(s) and s[i] != quote:
+                      i += 2 if s[i] == '\\' else 1
+                  return i + 1
+
+              def template(self, i):
+                  s = self.s
+                  while i < len(s):
+                      if s[i] == '\\':
+                          i += 2
+                      elif s[i] == '`':
+                          return i + 1
+                      elif s.startswith('${', i):
+                          i = self.code(i + 2, '}')
+                      else:
+                          i += 1
+                  return i
+
+              def regex(self, i):
+                  s, klass = self.s, False
+                  while i < len(s) and s[i] != '\n':
+                      c = s[i]
+                      if c == '\\':
+                          i += 2
+                          continue
+                      if c == '[':
+                          klass = True
+                      elif c == ']':
+                          klass = False
+                      elif c == '/' and not klass:
+                          return i + 1
+                      i += 1
+                  return i
+
+              def code(self, i, close=None, stop_at_statement=False):
+                  """Scans code from i; returns the index after `close` (or the statement end)."""
+                  s, depth, prev = self.s, 0, ''
+                  while i < len(s):
+                      c = s[i]
+                      if c in ' \t\r':
+                          i += 1
+                          continue
+                      if c == '\n':
+                          if stop_at_statement and depth == 0 and prev and prev not in CONTINUES_BEFORE:
+                              j = i
+                              while j < len(s) and s[j] in ' \t\r\n':
+                                  j += 1
+                              if j >= len(s) or (s[j] not in CONTINUES_AFTER and not s.startswith('//', j) and not s.startswith('/*', j)):
+                                  return i
+                          i += 1
+                          continue
+                      if s.startswith('//', i):
+                          i = s.find('\n', i)
+                          i = len(s) if i < 0 else i
+                          continue
+                      if s.startswith('/*', i):
+                          i = s.find('*/', i + 2)
+                          i = len(s) if i < 0 else i + 2
+                          continue
+                      if c in '\'"':
+                          i, prev = self.string(i + 1, c), c
+                          continue
+                      if c == '`':
+                          i, prev = self.template(i + 1), c
+                          continue
+                      if c == '/' and (prev in REGEX_BEFORE or (prev.isalnum() and KEYWORD.search(s, max(0, i - 30), i))):
+                          i, prev = self.regex(i + 1), '/'
+                          continue
+                      if not stop_at_statement:
+                          m = SINK.match(s, i)
+                          if m:
+                              self.sink(i, m)
+                      if c in '([{':
+                          depth += 1
+                      elif c in ')]}':
+                          if depth == 0:
+                              return i if stop_at_statement else i + 1
+                          depth -= 1
+                      elif stop_at_statement and depth == 0 and c in ';,':
+                          return i
+                      prev = c
+                      i += 1
+                  return i
+
+              def sink(self, i, m):
+                  start = m.end()
+                  if m.group().endswith('('):
+                      end = self.code(start, ')')
+                  else:
+                      end = self.code(start, stop_at_statement=True)
+                  expr = self.s[start:end]
+                  if '${' in expr and not any(e in expr for e in ESCAPES):
+                      self.found.append(self.s.count('\n', 0, i) + 1)
+
+
+          def findings(text):
+              text = VENDOR.sub(lambda m: re.sub(r'[^\n]', ' ', m.group()), text)
+              scan, i = Scan(text), 0
+              while i < len(text):
+                  i = scan.code(i)
+              lines = text.split('\n')
+              marked = lambda n: MARK.search(lines[n - 1]) or (n > 1 and MARK.search(lines[n - 2]))
+              return sorted(n for n in set(scan.found) if not marked(n))
+
+
+          def main(argv):
+              files = argv or sorted(glob.glob('dist/*.js'))
+              if not files:
+                  print('Sinks: no bundle given')
+                  return 1
+              bad = 0
+              for path in files:
+                  for line in findings(open(path, encoding='utf-8').read()):
+                      print(f'{path}:{line}: HTML sink interpolates ${{...}} without escape helper or // sink-ok: <reason>')
+                      bad += 1
+              print(f'Sinks: {bad} finding(s) in {len(files)} file(s)' if bad else f'Sinks: ok ({len(files)} file(s))')
+              return 1 if bad else 0
+
+
+          sys.exit(main(sys.argv[1:]))
+          PY
       - name: Vendor blocks match their hash
         run: |
           python3 - <<'PY'

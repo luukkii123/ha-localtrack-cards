@@ -844,6 +844,7 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   _build() {
+    // sink-ok: static skeleton, only style constants (shared styles, BuschUI tokens)
     this.shadowRoot.innerHTML = `
       <style>
         ${LOCALTRACK_SHARED_UI_STYLES}
@@ -1761,6 +1762,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
   /* ── Aufbau ─────────────────────────────────────────────────────────── */
 
   _build() {
+    // sink-ok: static skeleton, only the style constant ZONE_TIME_STYLES
     this.shadowRoot.innerHTML = `
       <style>${ZONE_TIME_STYLES}</style>
       <ha-card>
@@ -2050,8 +2052,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     const present = this._result.days_present || 0;
     this._tableEl.hidden = present === 0;
     const average = present ? this._result.total_net_s / present : 0;
-    // sink-ok: constants only
     // (dictionary words, Intl dates, numbers; no state or entity text)
+    // sink-ok: constants only
     this._footEl.innerHTML = `
       <tr>
         <td class="day">${t.summe}</td>

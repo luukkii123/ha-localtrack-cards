@@ -3,7 +3,7 @@
 // Loads dist/localtrack-cards.js in a vm sandbox with a small fake DOM, after
 // the pattern of busch-cards/tests/laden.js. No browser, no network.
 //
-// The fake DOM is just rich enough for the zone-time card. Its one real piece
+// The fake DOM is just rich enough for both cards. Its one real piece
 // of behaviour is `innerHTML`: assigned markup is PARSED into child nodes
 // (tags, attributes, entities), so a test can see whether a string sink turns
 // a friendly_name into elements. `shadowRoot.querySelector` hands out one
@@ -84,6 +84,7 @@ class FakeElement {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
     if (name === "value") this._value = String(value);
+    if (name === "class") this.className = String(value);
   }
 
   getAttribute(name) { return name in this.attributes ? this.attributes[name] : null; }
@@ -94,11 +95,37 @@ class FakeElement {
 
   removeEventListener() {}
 
-  appendChild(node) { this.childNodes.push(node); return node; }
+  appendChild(node) { this.childNodes.push(node); node.parentNode = this; return node; }
+
+  insertBefore(node, ref) {
+    const kids = this.childNodes;
+    if (node.parentNode) node.remove();
+    const at = ref ? kids.indexOf(ref) : -1;
+    if (at < 0) kids.push(node); else kids.splice(at, 0, node);
+    node.parentNode = this;
+    return node;
+  }
+
+  remove() {
+    const kids = this.parentNode?.childNodes;
+    if (kids && kids.includes(this)) kids.splice(kids.indexOf(this), 1);
+    this.parentNode = null;
+  }
+
+  get childElementCount() { return this.children.length; }
+
+  /** One stub per selector: the timeline only styles its scrubber wrapper. */
+  closest(selector) {
+    (this._closest ||= new Map()).has(selector) || this._closest.set(selector, new FakeElement("stub"));
+    return this._closest.get(selector);
+  }
+
+  focus() {}
 
   replaceChildren(...nodes) {
     this._html = null;
     this._kids = nodes.map((n) => (typeof n === "string" ? new FakeText(n) : n));
+    for (const n of this._kids) n.parentNode = this;
   }
 
   /** All element descendants, depth first. */
@@ -108,9 +135,11 @@ class FakeElement {
     return out;
   }
 
-  /** Tag-name selectors only — enough for "is there an img?". */
-  querySelectorAll(tag) {
-    const wanted = String(tag).toUpperCase();
+  /** Tag-name or single-class selectors only — enough for "is there an img?". */
+  querySelectorAll(selector) {
+    const text = String(selector);
+    if (text.startsWith(".")) return this.descendants().filter((n) => n.classList.contains(text.slice(1)));
+    const wanted = text.toUpperCase();
     return this.descendants().filter((n) => n.tagName === wanted);
   }
 
@@ -177,6 +206,7 @@ function ladeKarte(namen, { sprache = "en-US" } = {}) {
     createTextNode: (text) => new FakeText(text),
     documentElement: { style: {} },
     head: new FakeElement("head"),
+    getElementById: () => null,
     addEventListener() {},
     removeEventListener() {},
   };
@@ -189,6 +219,7 @@ function ladeKarte(namen, { sprache = "en-US" } = {}) {
     CustomEvent: class { constructor(type, options) { Object.assign(this, { type }, options); } },
     setTimeout, clearTimeout, setInterval, clearInterval,
     devicePixelRatio: 1,
+    getComputedStyle: () => ({ getPropertyValue: () => "" }),
     addEventListener() {},
     removeEventListener() {},
   };
