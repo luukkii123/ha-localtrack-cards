@@ -71,7 +71,11 @@ eingestellten Sprache.
   Nominatim: sie steht sofort mit Zonennamen bzw. „Aufenthalt", die Ortsnamen
   werden danach je Zeile in die Beschriftung geschrieben, ohne die Liste neu
   aufzubauen (Fokus und Scroll bleiben). Die Zonen werden einmal je
-  `hass.states` vorgefiltert, nicht je Punkt oder Reglerschritt. Zwei Aufenthalte am selben Ort stapeln
+  `hass.states` vorgefiltert, nicht je Punkt oder Reglerschritt.
+  Jede Nominatim-Anfrage hat eine Zeitgrenze von 8 Sekunden
+  (`AbortController`); nach einem Fehler oder Abbruch antworten weitere
+  Anfragen 60 Sekunden lang ohne Abruf leer (kein Wiederholungssturm), danach
+  wird es erneut versucht. Nur Antworten werden zwischengespeichert. Zwei Aufenthalte am selben Ort stapeln
   ihre Nadeln, die Liste zeigt beide. Liegen mehr Punkte vor als `max_points`,
   vereinfacht die Integration sie mit Douglas-Peucker, bevor die Karte sie sieht.
   Steht das Datum auf heute, lädt die Karte nach einer Positionsänderung

@@ -736,17 +736,35 @@ function matchZone(zones, lat, lon) {
 
 let geocodeChain = Promise.resolve();
 
-/** Reverse-geocode one coordinate via Nominatim, cached and rate-limited. */
+/** Time limit of one Nominatim lookup (#1304, M34 rest). Nominatim answers
+ *  in well under a second; a lookup still open after this is aborted. */
+const GEOCODE_TIMEOUT_MS = 8000;
+
+/** After a failed or aborted lookup, further lookups answer "" at once for
+ *  this long, without a request: a hanging or refusing Nominatim gets at most
+ *  one request per pause, not one per stay and refresh. */
+const GEOCODE_PAUSE_MS = 60000;
+
+/** Reverse-geocode one coordinate via Nominatim, cached and rate-limited.
+ *  Lookups run one after the other; each has its time limit, so a hanging
+ *  one holds up the next for at most GEOCODE_TIMEOUT_MS. Only answers are
+ *  cached (also an empty name); a failure is not, it is asked again after
+ *  the pause. */
 function reverseGeocode(lat, lon) {
   const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
   const cached = reverseGeocode._cache.get(key);
   if (cached !== undefined) return Promise.resolve(cached);
 
-  const run = () =>
-    fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16`
-    )
-      .then((response) => response.json())
+  const run = () => {
+    const known = reverseGeocode._cache.get(key);
+    if (known !== undefined) return known;
+    if (Date.now() < reverseGeocode._pausedUntil) return "";
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const request = fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16`,
+      controller ? { signal: controller.signal } : undefined
+    ).then((response) => response.json());
+    return withTimeout(request, GEOCODE_TIMEOUT_MS, "geocode_timeout")
       .then((data) => {
         const address = data.address || {};
         const name = address.road || address.neighbourhood || address.suburb ||
@@ -759,14 +777,17 @@ function reverseGeocode(lat, lon) {
         return name;
       })
       .catch(() => {
-        reverseGeocode._cache.set(key, "");
+        controller?.abort();
+        reverseGeocode._pausedUntil = Date.now() + GEOCODE_PAUSE_MS;
         return "";
       });
+  };
 
   geocodeChain = geocodeChain.then(run, run);
   return geocodeChain;
 }
 reverseGeocode._cache = new Map();
+reverseGeocode._pausedUntil = 0;
 
 /** The cached name for a coordinate, or undefined when it was never asked. */
 reverseGeocode.known = (lat, lon) => reverseGeocode._cache.get(`${lat.toFixed(5)},${lon.toFixed(5)}`);
