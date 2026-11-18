@@ -94,6 +94,8 @@ eingestellten Sprache.
 
 ## Geprüft
 
+**18.11.2026 · 0.6.6, Buschcheck Etappe D (#1287, Tag `v0.6.6`)** — Zeitgrenze 15 s für Tages-, Monats- und Statistikabrufe; nach einem Hänger Hinweis und freie Lade-Sperre, der nächste Abruf lädt wieder (M34). Ohne Meta-Platz im Kopf keine Altersanzeige. 62 Node-Tests. Abschlusslauf `karten-20261118-181023-bd0060` grün (49/49, 1235 Node-Tests, Block `statisch` mit `sinks` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe C am Bild geprüft (Sonnet), Abweichungen nur Rauschen (Uhrzeit, Kacheln, Markenlogo aus dem Netz, gegen Zwischenlauf `karten-20261118-173114-993d7a` gegengeprüft).
+
 **18.11.2026 · 0.6.5, Buschcheck Etappe C (#1277, Tag `v0.6.5`)** — XSS-Payloadtests für alle Karten und CI-Schritt Sinks (M19), Shared UI 0.4.0. Sichtbar unverändert. 60 Node-Tests. Abschlusslauf `karten-20261118-143236-199107` grün (55/55, 2159 Node-Tests, Block `statisch` mit `sinks` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe B am Bild geprüft (Sonnet), Abweichungen gewollt oder Rauschen (Uhrzeit, Kacheln, Markenlogo aus dem Netz).
 
 **18.11.2026 · 0.6.4, Buschcheck Etappe B (#1269, Tag `v0.6.4`)** — Leaflet 1.9.4 JS und CSS als Vendor-Blöcke mit Hash, CI meldet `vendor leaflet ok` (M46); Testkit (M5). 31 Node-Tests. Keine sichtbare Änderung. Abschlusslauf `karten-20261118-131312-6dd1c4` grün (51/51, 1003 Node-Tests, Block `statisch` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe A: 1836/1901 bytegleich, Rest Uhrzeit-/Animationsrauschen.
