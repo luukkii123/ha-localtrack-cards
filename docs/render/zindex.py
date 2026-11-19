@@ -32,6 +32,7 @@ Auf diesem Server läuft Playwright nur im Container:
           python3 /repo/docs/render/zindex.py /repo/dist/localtrack-cards.js \
                   /repo/docs/render/zindex-ergebnis'
 """
+import base64
 import json
 import pathlib
 import subprocess
@@ -220,6 +221,29 @@ PROBE = """() => {
     };
 }"""
 
+# Map tiles come from tile.openstreetmap.org. The CI job runs with
+# --network none, where every tile ends as a console error
+# (net::ERR_INTERNET_DISCONNECTED) although the measurement does not depend on
+# the tile picture: the tile probe is `nicht-hittestbar` anyway, the verdict
+# rests on the controls. So every external image is answered here with a
+# 1x1 grey PNG, online and offline alike, and counted in the report. Any other
+# external request is aborted and still fails the run via the console error.
+TILE_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGO4BwAA6wDq2UMzjQAAAABJRU5ErkJggg=="
+)
+external = {"bild_ersetzt": 0, "abgebrochen": []}
+
+
+def handle_external(route):
+    request = route.request
+    if request.resource_type == "image":
+        external["bild_ersetzt"] += 1
+        route.fulfill(status=200, content_type="image/png", body=TILE_PNG)
+    else:
+        external["abgebrochen"].append(request.url)
+        route.abort()
+
+
 results = {}
 console_errors, page_errors = [], []
 with sync_playwright() as pw:
@@ -231,6 +255,7 @@ with sync_playwright() as pw:
         page = browser.new_page(viewport={"width": 620, "height": 900}, locale="de-DE")
         page.on("console", lambda m: console_errors.append((m.type, m.text)) if m.type == "error" else None)
         page.on("pageerror", lambda e: page_errors.append(str(e)))
+        page.route(lambda url: not url.startswith(f"http://127.0.0.1:{PORT}/"), handle_external)
         page.goto(f"http://127.0.0.1:{PORT}/page-{variant}.html", wait_until="load")
         page.wait_for_function("window.__card && window.__card._map", timeout=20000)
         page.wait_for_timeout(2500)
@@ -271,6 +296,7 @@ verdict = {
     "titel_gemessen": results["nachher"]["titel"],
     "console_errors": console_errors,
     "page_errors": page_errors,
+    "extern": external,
 }
 verdict["bestanden"] = (
     verdict["ueberlappung_vorhanden"]
