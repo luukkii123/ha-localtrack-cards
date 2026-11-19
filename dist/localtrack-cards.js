@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.5.0 sha256:957791170679e3d04862942a665504dbdc622f3dc3fb8a62e9c32fdcbb27e90b */
-/** Busch UI 0.5.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.5.1 sha256:f83477a39842438643892e6c87d74d24d8880a1258dbc78aaeb27e907073a8b5 */
+/** Busch UI 0.5.1 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.5.0';
+  const sourceVersion = '0.5.1';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -267,13 +267,16 @@ const BuschUI = (() => {
   // M26/E6: filled primary and destructive are a tonal fill (theme colour 50 % with the card surface) with the text colour,
   // destructive text is the error colour mixed 70 % with the text colour: >= 4.5:1 in light and dark for #03a9f4 and #1c76be
   // (white on #03a9f4 was 2.6:1, #212121 on #1c76be 3.4:1, filled red 4.3/3.8:1). HA blue and red stay as surface and border.
+  // #1320/M79: coloured symbols reach 3:1 on their surface (WCAG 1.4.11): notice icons are the tone colour 60 % with the text
+  // colour on the notice surface (light/dark info 4.72/7.25, warning 3.34/9.53, error 6.03/5.90; were 2.44, 1.56, 3.41), the text
+  // button is the theme colour 60 % with the text colour on the card (5.30/8.24, #1c76be 7.98/6.15; was 2.63, #1c76be dark 3.56).
   const styles=`
 :where(.busch-btn,.busch-chip,.busch-notice,.busch-kv,.busch-state,.busch-dialog){--busch-space-1:var(--ha-space-1,4px);--busch-space-2:var(--ha-space-2,8px);--busch-space-3:var(--ha-space-3,12px);--busch-space-4:var(--ha-space-4,16px);--busch-font-size-s:var(--ha-font-size-s,12px);--busch-font-size-m:var(--ha-font-size-m,14px);--busch-font-size-l:var(--ha-font-size-l,16px);--busch-radius-inner:var(--ha-border-radius-md,8px);--busch-font-weight-medium:var(--ha-font-weight-medium,500)}
 :where(.busch-btn){display:inline-flex;align-items:center;justify-content:center;gap:var(--busch-space-2,8px);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:0 var(--busch-space-3,12px);border:1px solid transparent;border-radius:var(--busch-radius-inner,8px);background:transparent;color:var(--primary-text-color,#212121);font:inherit;font-weight:var(--busch-font-weight-medium,500);cursor:pointer}
 :where(.busch-btn):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
 :where(.busch-btn[data-variant=primary]){background:color-mix(in srgb,var(--primary-color,#03a9f4) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-btn[data-variant=secondary]){border:1px solid var(--divider-color,#e0e0e0);background:transparent;color:var(--primary-text-color,#212121)}
-:where(.busch-btn[data-variant=text]){background:transparent;color:var(--primary-color,#03a9f4)}
+:where(.busch-btn[data-variant=text]){background:transparent;color:color-mix(in srgb,var(--primary-color,#03a9f4) 60%,var(--primary-text-color,#212121))}
 :where(.busch-btn[data-variant=destructive]),:where(.busch-btn[data-variant=danger]){border:1px solid var(--error-color,#db4437);background:transparent;color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121))}
 :where(.busch-btn[data-variant=destructive][data-filled]),:where(.busch-btn[data-variant=danger][data-filled]){background:color-mix(in srgb,var(--error-color,#db4437) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-btn):disabled{cursor:default;opacity:0.5}
@@ -286,9 +289,9 @@ const BuschUI = (() => {
 :where(.busch-notice){display:flex;align-items:flex-start;gap:var(--busch-space-2,8px);box-sizing:border-box;min-width:0;padding:var(--busch-space-2,8px) var(--busch-space-3,12px);border:1px solid var(--divider-color,#e0e0e0);border-radius:var(--busch-radius-inner,8px);background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
 :where(.busch-notice-icon){--mdc-icon-size:20px;flex:none;color:var(--secondary-text-color,#727272)}
 :where(.busch-notice-text){min-width:0;overflow-wrap:anywhere}
-:where(.busch-notice[data-tone=info]){border-color:var(--info-color,#039be5)}:where(.busch-notice[data-tone=info]) .busch-notice-icon{color:var(--info-color,#039be5)}
-:where(.busch-notice[data-tone=warning]){border-color:var(--warning-color,#ffa600)}:where(.busch-notice[data-tone=warning]) .busch-notice-icon{color:var(--warning-color,#ffa600)}
-:where(.busch-notice[data-tone=error]){border-color:var(--error-color,#db4437)}:where(.busch-notice[data-tone=error]) .busch-notice-icon{color:var(--error-color,#db4437)}
+:where(.busch-notice[data-tone=info]){border-color:var(--info-color,#039be5)}:where(.busch-notice[data-tone=info]) .busch-notice-icon{color:color-mix(in srgb,var(--info-color,#039be5) 60%,var(--primary-text-color,#212121))}
+:where(.busch-notice[data-tone=warning]){border-color:var(--warning-color,#ffa600)}:where(.busch-notice[data-tone=warning]) .busch-notice-icon{color:color-mix(in srgb,var(--warning-color,#ffa600) 60%,var(--primary-text-color,#212121))}
+:where(.busch-notice[data-tone=error]){border-color:var(--error-color,#db4437)}:where(.busch-notice[data-tone=error]) .busch-notice-icon{color:color-mix(in srgb,var(--error-color,#db4437) 60%,var(--primary-text-color,#212121))}
 :where(.busch-kv){display:flex;align-items:baseline;justify-content:space-between;gap:var(--busch-space-3,12px);min-width:0;padding:var(--busch-space-1,4px) 0}
 :where(.busch-kv-key){min-width:0;color:var(--secondary-text-color,#727272);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :where(.busch-kv-value){min-width:0;color:var(--primary-text-color,#212121);text-align:end;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
