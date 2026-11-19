@@ -69,7 +69,7 @@ for _kandidat in ("/work",
                   str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if _kandidat not in sys.path:
         sys.path.append(_kandidat)
-from regeln import bewerte, lauf_breiten, messe_text, selbsttest, zaehle
+from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -714,6 +714,8 @@ try:
             messung=lambda p: messe_text(p, "localtrack-timeline-card"),
             vor_messung=voll_breit,
         )
+        # M26: Kontrast (4,5:1, gross 3:1) und Touchziele (44 px), hell/dunkel, 320/480/960 px.
+        kontrast_touch = messe_kontrast_touch(page, "localtrack-timeline-card", ausnahmen=pathlib.Path(__file__).with_name("kontrast-ausnahmen.json"), vor_messung=voll_breit)
 
         # ── Kartenkopf (M61): Titel bei 480 px hell und dunkel gleich ──────
         # BuschUI.header level 1: --ha-card-header-font-size (im Harness nicht
@@ -909,6 +911,7 @@ report = {
     "stale_loading": stale,
     "schieber": schieber,
     "kartenkopf": kartenkopf,
+    **kontrast_touch,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────

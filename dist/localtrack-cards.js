@@ -1461,8 +1461,11 @@ class LocaltrackTimelineCard extends HTMLElement {
           flex: 1 1 auto; min-width: 0; color: var(--primary-text-color);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
+        /* M26: Sekundaertext auf der grauen Zeile erreicht hell nur 3,8:1; ein
+           Viertel Primaertext dazu ergibt 5,1:1 (dunkel 7,2:1), die Stufe bleibt. */
         .segment .meta {
-          color: var(--secondary-text-color, #777); font-size: ${BuschUI.tokens.fontSizeS};
+          color: color-mix(in srgb, var(--secondary-text-color, #727272) 75%, var(--primary-text-color, #212121));
+          font-size: ${BuschUI.tokens.fontSizeS};
           flex: 0 0 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -1887,6 +1890,9 @@ class LocaltrackTimelineCard extends HTMLElement {
     for (const pin of this._stayPins.splice(kept)) this._markerLayer.removeLayer(pin);
     for (let i = this._stayPins.length; i < stays.length; i += 1) {
       const point = this._points[stays[i].startIndex];
+      // Fill (M26, E6): primary mixed 65 % with the primary text colour, darker
+      // in a light theme (white number 4.8:1 instead of 2.6:1), lighter in a
+      // dark one (dark number 7.6:1). Pure primary stays the route and slider.
       // `interactive: false` ist Absicht und nicht Kosmetik: die Nadel ist
       // eine Beschriftung der Landkarte, kein Bedienelement. Ohne das faengt
       // sie Klicks ab, die dem Verschieben der Karte gelten — und zwei
@@ -1896,7 +1902,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         keyboard: false,
         icon: L.divIcon({
           className: "",
-          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:var(--ha-font-size-s,12px);font-weight:var(--ha-font-weight-bold,700);overflow:hidden;">${i + 1}</div>`,
+          html: `<div style="background:color-mix(in srgb,var(--primary-color,#03a9f4) 65%,var(--primary-text-color,#212121));color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:var(--ha-font-size-s,12px);font-weight:var(--ha-font-weight-bold,700);overflow:hidden;">${i + 1}</div>`,
           iconSize: [22, 22],
           iconAnchor: [11, 11],
         }),
@@ -2453,7 +2459,9 @@ const ZONE_TIME_STYLES = `
            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   td.bar { padding-left: ${BuschUI.tokens.space2}; }
   tr.weekend td.day { color: var(--secondary-text-color, #727272); }
-  tr.empty td { color: var(--disabled-text-color, #bdbdbd); }
+  /* M26: Leertage in Sekundaertext (4,8:1 hell, 6,1:1 dunkel) statt der
+     Deaktiviert-Farbe (1,9:1 bzw. 3,4:1); leer zeigt der Gedankenstrich. */
+  tr.empty td { color: var(--secondary-text-color, #727272); }
   tr.today td { font-weight: var(--ha-font-weight-bold, 700); }
   .fill { height: 8px; border-radius: var(--ha-border-radius-pill, 9999px); background: var(--primary-color, #03a9f4); min-width: 2px; }
   tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0);

@@ -12,7 +12,9 @@ const { ladeKarte, quelle } = require("./laden");
 
 const KARTE = quelle()
   .replace(/\/\* BEGIN BUSCH SHARED UI[\s\S]*?\/\* END BUSCH SHARED UI \*\//, "")
-  .replace(/\/\* BEGIN VENDOR ([\w-]+)[\s\S]*?\/\* END VENDOR \1 \*\//g, "");
+  .replace(/\/\* BEGIN VENDOR ([\w-]+)[\s\S]*?\/\* END VENDOR \1 \*\//g, "")
+  // ${…} interpolations (BuschUI.tokens) carry braces: one token stand-in, so CSS blocks parse.
+  .replace(/\$\{[^{}]*\}/g, "var(--busch-token)");
 
 /** The value with every var(...) (nested) and ${...} interpolation removed. */
 function ohneTokens(value) {

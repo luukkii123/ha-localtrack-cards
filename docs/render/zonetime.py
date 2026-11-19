@@ -49,7 +49,7 @@ for _kandidat in ("/work",
                   str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if _kandidat not in sys.path:
         sys.path.append(_kandidat)
-from regeln import bewerte, lauf_breiten, messe_text, selbsttest, zaehle
+from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -381,6 +381,8 @@ with sync_playwright() as pw:
         vor_messung=voll_breit,
         hoehe=1600,
     )
+    # M26: Kontrast (4,5:1, gross 3:1) und Touchziele (44 px), hell/dunkel, 320/480/960 px.
+    kontrast_touch = messe_kontrast_touch(page, "localtrack-zone-time-card", ausnahmen=pathlib.Path(__file__).with_name("kontrast-ausnahmen.json"), vor_messung=voll_breit, hoehe=1600)
 
     # ── Kartenkopf (M61): Titel bei 480 px hell und dunkel gleich ──────────
     def kopf(p):
@@ -647,6 +649,7 @@ report = {
     "regel1_zaehlung": zahlen,
     "regel4_bilder": bilder,
     "kartenkopf": kartenkopf,
+    **kontrast_touch,
     "stale_loading": stale,
     "stale_loading_bilder": [m["bild"] for m in stale_laeufe],
     "console_errors": console,

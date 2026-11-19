@@ -1,0 +1,5 @@
+{
+  "beschreibung": "Ausnahmen der Kontrast- und Touchmessung (M26) für render.py und zonetime.py. Jeder Eintrag braucht einen Grund; anfangs leer.",
+  "kontrast": [],
+  "touch": []
+}
