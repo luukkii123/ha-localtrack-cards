@@ -1345,8 +1345,10 @@ class LocaltrackTimelineCard extends HTMLElement {
       this._showStatus(this._t.laden);
     }
     try {
-      await this._ensureMap();
-      const result = cached || await withTimeout(this._hass.callWS(message), LOAD_TIMEOUT_MS);
+      // The request goes out first (#1304, M54): its answer must not wait
+      // behind the Leaflet evaluation of a first map, which follows the list.
+      const request = cached ? null : withTimeout(this._hass.callWS(message), LOAD_TIMEOUT_MS);
+      const result = cached || await request;
       if (!cached && !append) rememberPast(message, bounds.end.getTime(), result);
       if (this._day !== day || generation !== this._loadGeneration) return;
       this._setStale(false);
@@ -1391,8 +1393,11 @@ class LocaltrackTimelineCard extends HTMLElement {
         Number(this._config.min_stay_minutes) || 10
       );
       this._segments = this._segmentState.segments;
-      this._renderTrack({ preserveInteraction });
+      // List before map (#1304, M54): the first map evaluates Leaflet.
       await this._renderSegments({ generation, day, preserveInteraction });
+      await this._ensureMap();
+      if (this._day !== day || generation !== this._loadGeneration) return;
+      this._renderTrack({ preserveInteraction });
       if (this._points.length === 0) {
         this._showStatus(this._t.keine_punkte);
       } else {
