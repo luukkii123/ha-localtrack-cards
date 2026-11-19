@@ -228,7 +228,7 @@ const BuschUI = (() => {
  * ersten Kartenaufbau (`localtrackLeaflet`, #1304 M21).
  */
 
-const CARD_VERSION = "0.6.6";
+const CARD_VERSION = "0.7.0";
 
 // Banner in a task of its own, not from the top level (#1304, M21): DevTools
 // and Playwright capture a stack trace for every console call; from the top
