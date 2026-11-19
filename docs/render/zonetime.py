@@ -444,6 +444,16 @@ with sync_playwright() as pw:
         }""")
         return werte
 
+    # Die Monatswechsel-Pruefung oben hat auf Oktober geschaltet und nicht
+    # zurueck; die Variante setzt den September mit Daten voraus. Erst zurueck
+    # und die September-Antwort abwarten, dann die Ausgangslage messen.
+    page.evaluate("() => window.__card.shadowRoot.querySelector('.prev').click()")
+    page.wait_for_function("""() => {
+        const sr = window.__card.shadowRoot;
+        return sr.querySelector('.month .label').textContent.trim() === 'September 2026'
+            && sr.querySelector('table').getAttribute('aria-busy') === 'false'
+            && sr.querySelector('tbody tr td.net')?.textContent.trim() === '8:12';
+    }""", timeout=5000)
     tabelle_oben = page.evaluate("""() => {
         const sr = window.__card.shadowRoot;
         return Math.round(sr.querySelector('table').getBoundingClientRect().top
