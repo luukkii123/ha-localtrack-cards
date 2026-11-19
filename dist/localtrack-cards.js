@@ -1066,6 +1066,7 @@ function showCardState(node, kind, title) {
 const LOCALTRACK_NAV_BUTTON_STYLES = `
   .busch-btn:is(.day-prev, .day-next, .prev, .next) {
     flex: 0 0 auto; padding: 0; font-size: var(--ha-font-size-xl, 20px); line-height: 1;
+    border-radius: ${BuschUI.tokens.radiusInner};
   }
   .busch-btn:is(.day-prev, .day-next, .prev, .next):hover { background: var(--secondary-background-color, #e5e5e5); }
 `;
@@ -1341,7 +1342,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         .controls { display: flex; gap: ${BuschUI.tokens.space1}; align-items: center; flex: 0 0 auto; min-width: 0; }
         /* Regel 1: einzeilige Beschriftung, gekuerzt statt umgebrochen. */
         .controls .day-name, .scrubber .scrub-name {
-          flex: 0 1 auto; min-width: 0; font-size: var(--ha-font-size-s, 0.85em);
+          flex: 0 1 auto; min-width: 0; font-size: ${BuschUI.tokens.fontSizeS};
           color: var(--secondary-text-color);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -1352,17 +1353,19 @@ class LocaltrackTimelineCard extends HTMLElement {
         .controls input[type="date"] {
           flex: 0 1 auto; min-width: 0;
           box-sizing: border-box; min-height: 44px;
-          font: inherit; font-size: var(--ha-font-size-s, 0.9em); max-width: 100%;
+          font: inherit; font-size: ${BuschUI.tokens.fontSizeS}; max-width: 100%;
           color: var(--primary-text-color); background: var(--card-background-color, #fff);
           border: 1px solid var(--divider-color, #e0e0e0);
-          border-radius: var(--ha-card-border-radius, 8px); padding: var(--ha-space-2, 8px);
+          border-radius: ${BuschUI.tokens.radiusInner}; padding: var(--ha-space-2, 8px);
         }
         @container (max-width: 440px) {
           .header { display: grid; grid-template-columns: minmax(0, 1fr); }
           .controls { width: 100%; }
           .controls input[type="date"] { flex: 1 1 auto; }
         }
-        .map-wrap { position: relative; border-radius: var(--ha-card-border-radius, 8px); overflow: hidden; }
+        /* Die Landkarte ist eine Medienflaeche: Kartenradius, Rueckfall 12 px wie die
+           anderen Familien (M63); Bedienelemente nehmen die eine Innenstufe. */
+        .map-wrap { position: relative; border-radius: ${BuschUI.tokens.mediaRadius}; overflow: hidden; }
         .map { width: 100%; height: 320px; background: var(--secondary-background-color, #dde5ec); }
         .map.leaflet-container .leaflet-control-zoom a {
           box-sizing: border-box; width: 44px; height: 44px; line-height: 44px;
@@ -1408,7 +1411,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .scrubber input[type="range"]:disabled { cursor: default; opacity: 0.5; }
         .scrubber input[type="range"]::-webkit-slider-runnable-track {
-          height: 6px; border-radius: 3px;
+          height: 6px; border-radius: var(--ha-border-radius-pill, 9999px);
           background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
         }
         .scrubber input[type="range"]::-webkit-slider-thumb {
@@ -1419,11 +1422,11 @@ class LocaltrackTimelineCard extends HTMLElement {
           box-shadow: 0 0 0 1px var(--primary-color, #03a9f4);
         }
         .scrubber input[type="range"]::-moz-range-track {
-          height: 6px; border-radius: 3px;
+          height: 6px; border-radius: var(--ha-border-radius-pill, 9999px);
           background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
         }
         .scrubber input[type="range"]::-moz-range-progress {
-          height: 6px; border-radius: 3px; background: var(--primary-color, #03a9f4);
+          height: 6px; border-radius: var(--ha-border-radius-pill, 9999px); background: var(--primary-color, #03a9f4);
         }
         .scrubber input[type="range"]::-moz-range-thumb {
           box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%;
@@ -1433,7 +1436,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .scrubber .scrub-label {
           flex: 0 1 auto; min-width: 0; max-width: 70%; text-align: right;
-          font-size: var(--ha-font-size-s, 0.85em); color: var(--secondary-text-color);
+          font-size: ${BuschUI.tokens.fontSizeS}; color: var(--secondary-text-color);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .segments {
@@ -1443,7 +1446,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         .segment {
           display: flex; align-items: center; gap: var(--ha-space-2, 8px);
           box-sizing: border-box; min-height: 44px;
-          padding: var(--ha-space-2, 8px); border-radius: var(--ha-card-border-radius, 8px);
+          padding: var(--ha-space-2, 8px); border-radius: ${BuschUI.tokens.radiusInner};
           cursor: pointer;
           background: var(--secondary-background-color, #f1f1f1); min-width: 0;
         }
@@ -1460,7 +1463,7 @@ class LocaltrackTimelineCard extends HTMLElement {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .segment .meta {
-          color: var(--secondary-text-color, #777); font-size: var(--ha-font-size-s, 0.85em);
+          color: var(--secondary-text-color, #777); font-size: ${BuschUI.tokens.fontSizeS};
           flex: 0 0 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -1893,7 +1896,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         keyboard: false,
         icon: L.divIcon({
           className: "",
-          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:12px;font-weight:600;overflow:hidden;">${i + 1}</div>`,
+          html: `<div style="background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:var(--ha-font-size-s,12px);font-weight:var(--ha-font-weight-bold,700);overflow:hidden;">${i + 1}</div>`,
           iconSize: [22, 22],
           iconAnchor: [11, 11],
         }),
@@ -2301,8 +2304,8 @@ const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
     texte: {
       laden: "Lade …",
       spalte_tag: "Tag",
-      spalte_netto: "netto",
-      spalte_brutto: "brutto",
+      spalte_netto: "Netto",
+      spalte_brutto: "Brutto",
       summe: "Summe",
       schnitt: "Schnitt je Tag",
       voriger_monat: "Voriger Monat",
@@ -2348,8 +2351,8 @@ const TEXTE_LOCALTRACK_ZONE_TIME_CARD = {
     texte: {
       laden: "Loading …",
       spalte_tag: "Day",
-      spalte_netto: "net",
-      spalte_brutto: "gross",
+      spalte_netto: "Net",
+      spalte_brutto: "Gross",
       summe: "Total",
       schnitt: "Daily average",
       voriger_monat: "Previous month",
@@ -2391,7 +2394,7 @@ const ZONE_TIME_STYLES = `
   /* Regel 4: Innenabstand var(--ha-space-4) an der ha-card, wie HAs
      eigener .card-content. ha-card ist ein Kind dieses Shadow-Roots. */
   ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
-  .head { display: flex; flex-direction: column; gap: var(--ha-space-2, 8px); margin-bottom: 10px; }
+  .head { display: flex; flex-direction: column; gap: var(--ha-space-2, 8px); margin-bottom: ${BuschUI.tokens.space3}; }
   /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. */
   .title {
     font-size: var(--ha-font-size-l, 1.1em); font-weight: var(--ha-font-weight-medium, 600);
@@ -2402,10 +2405,10 @@ const ZONE_TIME_STYLES = `
   .pickers select {
     flex: 1 1 8em; min-width: 0; box-sizing: border-box; min-height: 44px;
     padding: var(--ha-space-2, 8px); font: inherit;
-    font-size: var(--ha-font-size-s, 0.9em);
+    font-size: ${BuschUI.tokens.fontSizeS};
     color: var(--primary-text-color); background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: var(--ha-card-border-radius, 8px);
+    border-radius: ${BuschUI.tokens.radiusInner};
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .month {
@@ -2437,27 +2440,28 @@ const ZONE_TIME_STYLES = `
      an jedem einzeiligen Textcontainer. In einer Tabellenzelle wirkt min-width
      nicht (das Tabellenlayout bestimmt die Breite), aber die Regel ist
      maschinell pruefbar und kennt hier keine Ausnahme. */
-  th { font-size: 0.75em; font-weight: var(--ha-font-weight-medium, 600); text-transform: uppercase;
-       color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 4px;
+  /* Spaltenkoepfe in Satzschreibweise aus dem Woerterbuch, ohne Versalien (M63). */
+  th { font-size: ${BuschUI.tokens.fontSizeS}; font-weight: var(--ha-font-weight-medium, 600);
+       color: var(--secondary-text-color, #727272); text-align: right; padding: 0 0 ${BuschUI.tokens.space1};
        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   th.day { text-align: left; width: 42%; }
   th.net, th.gross { width: 16%; }
   th.bar { width: 26%; }
-  td { padding: 3px 0; font-size: 0.92em; border-top: 1px solid var(--divider-color, #e0e0e0);
+  td { padding: ${BuschUI.tokens.space1} 0; font-size: ${BuschUI.tokens.fontSizeM}; border-top: 1px solid var(--divider-color, #e0e0e0);
        color: var(--primary-text-color); }
   td.day { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  td.num { text-align: right; padding-left: 10px;
+  td.num { text-align: right; padding-left: ${BuschUI.tokens.space2};
            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  td.bar { padding-left: 10px; }
+  td.bar { padding-left: ${BuschUI.tokens.space2}; }
   tr.weekend td.day { color: var(--secondary-text-color, #727272); }
   tr.empty td { color: var(--disabled-text-color, #bdbdbd); }
   tr.today td { font-weight: var(--ha-font-weight-bold, 700); }
-  .fill { height: 8px; border-radius: 4px; background: var(--primary-color, #03a9f4); min-width: 2px; }
+  .fill { height: 8px; border-radius: var(--ha-border-radius-pill, 9999px); background: var(--primary-color, #03a9f4); min-width: 2px; }
   tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0);
-             font-weight: var(--ha-font-weight-medium, 600); padding-top: 6px; }
+             font-weight: var(--ha-font-weight-medium, 600); padding-top: ${BuschUI.tokens.space2}; }
   /* mehrzeilig: overflow-wrap: anywhere, damit ein langes Wort umbricht
      statt die Karte zu sprengen (Regel 1). */
-  .note { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color, #727272);
+  .note { margin-top: ${BuschUI.tokens.space2}; font-size: ${BuschUI.tokens.fontSizeS}; color: var(--secondary-text-color, #727272);
           overflow-wrap: anywhere; }
   /* Zustand (M27): BuschUI.stateBlock, Icon und Satz; nur der Abstand ist eigen. */
   .status { padding: var(--ha-space-4, 16px) 0; }
