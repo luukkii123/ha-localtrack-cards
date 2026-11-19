@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.4.0 sha256:c6ac609b08854ff5a778506207a9bb31689a7fad5e9e7a9d39ab53c483fbd290 */
-/** Busch UI 0.4.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.5.0 sha256:66de1a3793f836560c2195179ea037cb71718df41533bd9ffd02b0037fce3a69 */
+/** Busch UI 0.5.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.4.0';
+  const sourceVersion = '0.5.0';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -94,14 +94,23 @@ const BuschUI = (() => {
     };
     next();return holder;
   }
+  // Own keys only (M19 remainder): 'constructor' or '__proto__' must not reach a class name.
+  const STATUS_SEMANTICS=Object.freeze({success:'success',running:'success',online:'success',connected:'success',on:'success',idle:'warning',warning:'warning',partial:'warning',starting:'warning',stopping:'warning',paused:'warning',blocked:'warning',suspended:'warning',error:'error',failed:'error',neutral:'neutral',stopped:'neutral',offline:'neutral',disconnected:'neutral',off:'neutral',unavailable:'unavailable',unknown:'unknown'});
   function statusSemantic(status) {
-    return ({success:'success',running:'success',online:'success',connected:'success',on:'success',idle:'warning',warning:'warning',partial:'warning',starting:'warning',stopping:'warning',paused:'warning',blocked:'warning',suspended:'warning',error:'error',failed:'error',neutral:'neutral',stopped:'neutral',offline:'neutral',disconnected:'neutral',off:'neutral',unavailable:'unavailable',unknown:'unknown'})[status]||'unknown';
+    return typeof status==='string'&&Object.hasOwn(STATUS_SEMANTICS,status)?STATUS_SEMANTICS[status]:'unknown';
   }
   function statusBadge(status,text,classPrefix='status-') {
     const badge=document.createElement('span');badge.className='status-badge '+classPrefix+statusSemantic(status);badge.textContent=text;return badge;
   }
-  function formatNumber(value,locale,options={maximumFractionDigits:1}) {
-    return !['number','string'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(Number(value))?null:new Intl.NumberFormat(locale||'en',options).format(Number(value));
+  // M67: one formatter per locale and options (building one costs far more than formatting).
+  const numberFormats=new Map(),DEFAULT_NUMBER='{"maximumFractionDigits":1}';
+  function numberFormat(locale,options) {
+    const key=locale+'\u0000'+(options===undefined?DEFAULT_NUMBER:JSON.stringify(options));let format=numberFormats.get(key);
+    if(!format){if(numberFormats.size>=64)numberFormats.clear();format=new Intl.NumberFormat(locale,options??{maximumFractionDigits:1});numberFormats.set(key,format);}
+    return format;
+  }
+  function formatNumber(value,locale,options) {
+    return !['number','string'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(Number(value))?null:numberFormat(locale||'en',options).format(Number(value));
   }
   function metric(label,value,ratio) {
     const node=document.createElement('div');node.className='metric';
@@ -137,7 +146,10 @@ const BuschUI = (() => {
       return helpers;
     },
   };
-  const tokens=Object.freeze({space1:'var(--ha-space-1, 4px)',space2:'var(--ha-space-2, 8px)',space3:'var(--ha-space-3, 12px)',space4:'var(--ha-space-4, 16px)',mediaRadius:'var(--ha-card-border-radius, 12px)',controlMinHeight:'44px'});
+  const tokens=Object.freeze({space1:'var(--ha-space-1, 4px)',space2:'var(--ha-space-2, 8px)',space3:'var(--ha-space-3, 12px)',space4:'var(--ha-space-4, 16px)',mediaRadius:'var(--ha-card-border-radius, 12px)',controlMinHeight:'44px',
+    // M63: the single inner radius step and the type scale, as --busch-* hooks over the HA tokens.
+    radiusInner:'var(--busch-radius-inner,var(--ha-border-radius-md,8px))',fontSizeS:'var(--busch-font-size-s,var(--ha-font-size-s,12px))',
+    fontSizeM:'var(--busch-font-size-m,var(--ha-font-size-m,14px))',fontSizeL:'var(--busch-font-size-l,var(--ha-font-size-l,16px))'});
   function language(hass,{legacy=false,browser=true}={}) {
     const code=hass?.locale?.language||(legacy&&hass?.language)||(browser&&typeof navigator!=='undefined'&&navigator.language)||'en';
     return String(code).toLowerCase().startsWith('de')?'de':'en';
@@ -156,11 +168,19 @@ const BuschUI = (() => {
     } catch(error) {return {ok:false,error};}
   }
   const addClass=(node,name)=>{if(!String(node.className||'').split(/\s+/).includes(name))node.className=((node.className||'')+' '+name).trim();};
-  function header({node=document.createElement('div'),titleNode,label}={}) {
+  // M61: level 1 opts the title into the HA card header step (family typography otherwise stays in charge).
+  function header({node=document.createElement('div'),titleNode,subtitleNode,label,level}={}) {
     addClass(node,'busch-ui-header');node.setAttribute('role','group');
     const name=label??titleNode?.textContent;if(name)node.setAttribute('aria-label',name);
-    if(titleNode){if(!/^H[1-6]$/.test(titleNode.tagName||'')){titleNode.setAttribute('role','heading');titleNode.setAttribute('aria-level','2');}addClass(titleNode,'busch-ui-title');}
+    if(titleNode){if(!/^H[1-6]$/.test(titleNode.tagName||'')){titleNode.setAttribute('role','heading');titleNode.setAttribute('aria-level','2');}addClass(titleNode,'busch-ui-title');
+      if(level!==undefined)titleNode.setAttribute('data-level',String(level));}
+    if(subtitleNode)addClass(subtitleNode,'busch-ui-subtitle');
     return node;
+  }
+  // The single level-2 step for section headings inside a card (below the card title, aria level 3).
+  function sectionHeading({node=document.createElement('div'),text}={}) {
+    if(!/^H[1-6]$/.test(node.tagName||'')){node.setAttribute('role','heading');node.setAttribute('aria-level','3');}
+    addClass(node,'busch-ui-heading2');if(text!==undefined)node.textContent=text;return node;
   }
   const actionBindings=new WeakMap();
   function action({node=document.createElement('button'),label,text,icon,disabled,variant='secondary',onClick}={}) {
@@ -187,10 +207,106 @@ const BuschUI = (() => {
     const summary=document.createElement('summary');summary.textContent=title;node.appendChild(summary);
     if(content)node.appendChild(content);return node;
   }
+  // M42: double-load safe registration. A second copy of a module (two resource URLs, a cache parameter) keeps
+  // the first class instead of throwing NotSupportedError, and the card picker entry is added only once.
+  function register(name,cls,card) {
+    if(!name)throw new Error('register requires an element name');if(typeof cls!=='function')throw new Error('register requires an element class');
+    const existing=customElements.get(name);if(!existing)customElements.define(name,cls);
+    if(card){const list=window.customCards||(window.customCards=[]);if(!list.some(entry=>entry?.type===card.type))list.push(card);}
+    return existing||cls;
+  }
+  // M28: one history entry per dialog (ui-regeln Regel 2, steps 1-4). Key buschUiDialog, never `dialog`:
+  // HA reads history.state.dialog itself. history.state is a copy, so the own entry is recognised by id.
+  let dialogSerial=0;
+  function dialogHistory({name='dialog',onClose}={}) {
+    const id=String(++dialogSerial)+'-'+Math.random().toString(36).slice(2),history=window.history;let pushed=false,active=true;
+    try{history.pushState({buschUiDialog:{id,name}},'');pushed=true;}catch{/* private mode or rate limit: Escape/close still work */}
+    const onTop=()=>history.state?.buschUiDialog?.id===id;
+    const stop=()=>{active=false;window.removeEventListener('popstate',onPop);};
+    // Back gesture or navigation: the own entry is gone (or there never was one).
+    function onPop(){if(!active||(pushed&&onTop()))return;stop();onClose?.('back');}
+    window.addEventListener('popstate',onPop);
+    return {get active(){return active},get pushed(){return pushed},id,
+      close(){if(!active)return;stop();if(pushed&&onTop())history.back();}};
+  }
+  // M28/R04: Tab and Shift+Tab cycle inside root, stray focus is pulled back, focus returns on release.
+  const FOCUSABLE='button,[href],input,select,textarea,summary,[tabindex],ha-icon-button,ha-button,ha-switch,ha-checkbox,ha-textfield,ha-select,ha-input,ha-slider';
+  function deepActive(start=document.activeElement){let active=start;while(active?.shadowRoot?.activeElement)active=active.shadowRoot.activeElement;return active;}
+  function focusTrap(root,{initial}={}) {
+    const previous=deepActive();let live=true;
+    const items=()=>[...root.querySelectorAll(FOCUSABLE)].filter(el=>!el.disabled&&!el.hidden&&el.getAttribute?.('tabindex')!=='-1'&&el.getAttribute?.('type')!=='hidden'&&(typeof el.getClientRects!=='function'||el.getClientRects().length>0));
+    const current=()=>root.getRootNode?.()?.activeElement??document.activeElement;
+    const inside=event=>event.composedPath?.().includes(root)??root.contains?.(event.target);
+    const onKey=event=>{if(event.key!=='Tab')return;const list=items();if(!list.length)return;event.preventDefault();
+      const at=list.indexOf(current()),step=event.shiftKey?-1:1;(at<0?list[event.shiftKey?list.length-1:0]:list[(at+step+list.length)%list.length]).focus();};
+    const onFocus=event=>{if(!inside(event))items()[0]?.focus();};
+    document.addEventListener('keydown',onKey,true);document.addEventListener('focusin',onFocus,true);
+    (initial||items()[0])?.focus?.();
+    return {items,release({returnFocus=true}={}){if(!live)return;live=false;document.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus,true);
+      if(returnFocus&&previous&&previous.isConnected!==false)previous.focus?.();}};
+  }
+  // M27: one state block for loading/empty/error/offline. The node is a live region from creation;
+  // passing it back updates it in place so the change is announced. Texts come from the card dictionary.
+  const STATE_KINDS=Object.freeze({loading:{role:'status',live:'polite',icon:'mdi:timer-sand'},empty:{role:'status',live:'polite',icon:'mdi:inbox-outline'},
+    offline:{role:'status',live:'polite',icon:'mdi:lan-disconnect'},error:{role:'alert',live:'assertive',icon:'mdi:alert-circle-outline'}});
+  function stateBlock({node=document.createElement('div'),kind='empty',icon,title,hint,action:act}={}) {
+    const spec=STATE_KINDS[kind];if(!spec)throw new Error('Unknown state kind: '+kind);
+    if(!title)throw new Error('State block requires a title');
+    addClass(node,'busch-state');node.setAttribute('role',spec.role);node.setAttribute('aria-live',spec.live);node.setAttribute('data-kind',kind);
+    if(kind==='loading')node.setAttribute('aria-busy','true');else node.removeAttribute?.('aria-busy');
+    const symbol=ha.icon(icon||spec.icon);symbol.setAttribute('aria-hidden','true');symbol.className='busch-state-icon';
+    const text=document.createElement('div');text.className='busch-state-text';
+    const heading=document.createElement('div');heading.className='busch-state-title';heading.textContent=title;text.appendChild(heading);
+    if(hint){const small=document.createElement('div');small.className='busch-state-hint';small.textContent=hint;text.appendChild(small);}
+    const parts=[symbol,text];if(act)parts.push(action({variant:'secondary',...act}));
+    node.replaceChildren(...parts);return node;
+  }
+  // M62/M63: opt-in base components. --busch-* tokens live on the opt-in classes (no :host: editor styles may sit
+  // in a light DOM style element) and fall back to HA tokens; :where keeps family rules in front. Inner radius: one step, 8 px
+  // (HA --ha-border-radius-md), below the 12 px card radius so nested surfaces read as inside the card.
+  const styles=`
+:where(.busch-btn,.busch-chip,.busch-notice,.busch-kv,.busch-state,.busch-dialog){--busch-space-1:var(--ha-space-1,4px);--busch-space-2:var(--ha-space-2,8px);--busch-space-3:var(--ha-space-3,12px);--busch-space-4:var(--ha-space-4,16px);--busch-font-size-s:var(--ha-font-size-s,12px);--busch-font-size-m:var(--ha-font-size-m,14px);--busch-font-size-l:var(--ha-font-size-l,16px);--busch-radius-inner:var(--ha-border-radius-md,8px);--busch-font-weight-medium:var(--ha-font-weight-medium,500)}
+:where(.busch-btn){display:inline-flex;align-items:center;justify-content:center;gap:var(--busch-space-2,8px);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:0 var(--busch-space-3,12px);border:1px solid transparent;border-radius:var(--busch-radius-inner,8px);background:transparent;color:var(--primary-text-color,#212121);font:inherit;font-weight:var(--busch-font-weight-medium,500);cursor:pointer}
+:where(.busch-btn):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+:where(.busch-btn[data-variant=primary]){background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#ffffff)}
+:where(.busch-btn[data-variant=secondary]){border:1px solid var(--divider-color,#e0e0e0);background:transparent;color:var(--primary-text-color,#212121)}
+:where(.busch-btn[data-variant=text]){background:transparent;color:var(--primary-color,#03a9f4)}
+:where(.busch-btn[data-variant=destructive]),:where(.busch-btn[data-variant=danger]){border:1px solid var(--error-color,#db4437);background:transparent;color:var(--error-color,#db4437)}
+:where(.busch-btn[data-variant=destructive][data-filled]),:where(.busch-btn[data-variant=danger][data-filled]){background:var(--error-color,#db4437);color:var(--text-primary-color,#ffffff)}
+:where(.busch-btn):disabled{cursor:default;opacity:0.5}
+:where(.busch-chip){display:inline-flex;align-items:center;gap:var(--busch-space-1,4px);box-sizing:border-box;min-height:28px;min-width:0;max-width:100%;padding:0 var(--busch-space-2,8px);border-radius:var(--ha-border-radius-pill,9999px);background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121);font-size:var(--busch-font-size-s,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:where(button.busch-chip){min-height:44px;border:0;font-family:inherit;cursor:pointer}
+:where(.busch-chip[data-tone=success]){background:color-mix(in srgb,var(--success-color,#43a047) 18%,transparent)}
+:where(.busch-chip[data-tone=warning]){background:color-mix(in srgb,var(--warning-color,#ffa600) 18%,transparent)}
+:where(.busch-chip[data-tone=error]){background:color-mix(in srgb,var(--error-color,#db4437) 18%,transparent)}
+:where(.busch-chip[data-tone=info]){background:color-mix(in srgb,var(--info-color,#039be5) 18%,transparent)}
+:where(.busch-notice){display:flex;align-items:flex-start;gap:var(--busch-space-2,8px);box-sizing:border-box;min-width:0;padding:var(--busch-space-2,8px) var(--busch-space-3,12px);border:1px solid var(--divider-color,#e0e0e0);border-radius:var(--busch-radius-inner,8px);background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
+:where(.busch-notice-icon){--mdc-icon-size:20px;flex:none;color:var(--secondary-text-color,#727272)}
+:where(.busch-notice-text){min-width:0;overflow-wrap:anywhere}
+:where(.busch-notice[data-tone=info]){border-color:var(--info-color,#039be5)}:where(.busch-notice[data-tone=info]) .busch-notice-icon{color:var(--info-color,#039be5)}
+:where(.busch-notice[data-tone=warning]){border-color:var(--warning-color,#ffa600)}:where(.busch-notice[data-tone=warning]) .busch-notice-icon{color:var(--warning-color,#ffa600)}
+:where(.busch-notice[data-tone=error]){border-color:var(--error-color,#db4437)}:where(.busch-notice[data-tone=error]) .busch-notice-icon{color:var(--error-color,#db4437)}
+:where(.busch-kv){display:flex;align-items:baseline;justify-content:space-between;gap:var(--busch-space-3,12px);min-width:0;padding:var(--busch-space-1,4px) 0}
+:where(.busch-kv-key){min-width:0;color:var(--secondary-text-color,#727272);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:where(.busch-kv-value){min-width:0;color:var(--primary-text-color,#212121);text-align:end;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+:where(.busch-dialog){display:flex;flex-direction:column;box-sizing:border-box;width:calc(100vw - 32px);max-width:560px;max-height:calc(100vh - 32px);border-radius:var(--ha-dialog-border-radius,var(--ha-card-border-radius,12px));background:var(--card-background-color,#ffffff);color:var(--primary-text-color,#212121);overflow:hidden}
+:where(.busch-dialog[data-size=confirm]){max-width:320px}
+:where(.busch-dialog-head){display:flex;align-items:center;gap:var(--busch-space-2,8px);min-width:0;padding:var(--busch-space-2,8px) var(--busch-space-4,16px) var(--busch-space-2,8px) var(--busch-space-2,8px)}
+:where(.busch-dialog-close){order:-1;flex:none}
+:where(.busch-dialog-title){flex:1;min-width:0;margin:0;font-size:var(--busch-font-size-l,var(--ha-font-size-l,16px));font-weight:var(--busch-font-weight-medium,500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:where(.busch-dialog-content){flex:1 1 auto;min-height:0;overflow:auto;padding:0 var(--busch-space-4,16px);overflow-wrap:anywhere}
+:where(.busch-dialog-foot){display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--busch-space-2,8px);padding:var(--busch-space-3,12px) var(--busch-space-4,16px)}
+:where(.busch-dialog-foot) :where(.busch-btn){text-transform:none}
+:where(.busch-dialog-foot) :where([data-variant=destructive]){margin-inline-end:auto}
+@media (max-width:449px),(max-height:499px){:where(.busch-dialog){width:100%;max-width:none;min-height:90vh;max-height:100vh;border-radius:var(--ha-card-border-radius,12px) var(--ha-card-border-radius,12px) 0 0}:where(.busch-dialog-foot){margin-top:auto}}
+`;
   // Scoped bases: family layout/grid/padding and domain presentation override
   // these fundamentals. No global selectors or services in shared primitives.
-  const cardStyles=`
+  const cardStyles=styles+`
 .busch-ui-header{min-width:0}.busch-ui-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:where(.busch-ui-title[data-level="1"]){font-size:var(--ha-card-header-font-size,var(--ha-font-size-2xl,24px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121)}
+:where(.busch-ui-subtitle){font-size:var(--busch-font-size-s,var(--ha-font-size-s,12px));color:var(--secondary-text-color,#727272)}
+:where(.busch-ui-heading2){margin:0;font-size:var(--busch-font-size-m,var(--ha-font-size-m,14px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121);text-transform:none;letter-spacing:normal;overflow-wrap:anywhere}
 :where(.busch-ui-action){border:0;border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-2,8px) var(--ha-space-3,12px);color:var(--primary-text-color,#212121);background:var(--secondary-background-color,#eeeeee);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
 :where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
 :where(.busch-ui-action[data-variant=primary]){background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#ffffff)}
@@ -198,6 +314,12 @@ const BuschUI = (() => {
 :where(.busch-ui-action[data-variant=destructive]),:where(.busch-ui-action[data-variant=danger]){color:var(--error-color,#db4437)}
 :where(.busch-ui-action[data-variant=quiet]),:where(.busch-ui-action[data-variant=icon-only]),:where(.busch-ui-action[data-variant=overflow]){background:transparent}
 :where(.busch-ui-action):disabled{cursor:default;opacity:0.5}
+.busch-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ha-space-2,8px);padding:var(--ha-space-4,16px);text-align:center;min-width:0;box-sizing:border-box;color:var(--primary-text-color,#212121)}
+.busch-state-icon{--mdc-icon-size:24px;color:var(--secondary-text-color,#727272)}
+.busch-state[data-kind=error] .busch-state-icon{color:var(--error-color,#db4437)}.busch-state[data-kind=offline] .busch-state-icon{color:var(--warning-color,#ffa600)}
+.busch-state-text{display:flex;flex-direction:column;gap:var(--ha-space-1,4px);min-width:0;max-width:100%}
+.busch-state-title{font-weight:var(--ha-font-weight-medium,500);overflow-wrap:anywhere}
+.busch-state-hint{color:var(--secondary-text-color,#727272);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}
 `;
   const editorStyles=cardStyles+`
 :host(.busch-ui-editor),.busch-ui-editor{display:block;min-width:0;color:var(--primary-text-color,#212121);font:inherit}
@@ -206,7 +328,7 @@ const BuschUI = (() => {
 .busch-ui-section>summary:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
 .busch-ui-validation{color:var(--error-color,#db4437);overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
 `;
-  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,mayAct,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,action,section,cardStyles,editorStyles});
+  return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,mayAct,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,sectionHeading,action,section,stateBlock,dialogHistory,focusTrap,register,styles,cardStyles,editorStyles});
 })();
 /* END BUSCH SHARED UI */
 
