@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.5.1 sha256:f83477a39842438643892e6c87d74d24d8880a1258dbc78aaeb27e907073a8b5 */
-/** Busch UI 0.5.1 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.5.2 sha256:f7f475f717141a4253a8cce468cce0015dde2c21fe15a4a04cd6279fac5389b2 */
+/** Busch UI 0.5.2 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.5.1';
+  const sourceVersion = '0.5.2';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -333,12 +333,14 @@ const BuschUI = (() => {
 .busch-state-title{font-weight:var(--ha-font-weight-medium,500);overflow-wrap:anywhere}
 .busch-state-hint{color:var(--secondary-text-color,#727272);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}
 `;
+  // #1320 (Etappe I): the validation text is the error colour 70 % with the text colour like the destructive text, >= 4.5:1 on
+  // the card and the secondary surface in light and dark (light/dark card 6.56/5.46; red alone was 4.29/3.97).
   const editorStyles=cardStyles+`
 :host(.busch-ui-editor),.busch-ui-editor{display:block;min-width:0;color:var(--primary-text-color,#212121);font:inherit}
 :host(.busch-ui-editor) ha-form,.busch-ui-editor ha-form{display:block;min-width:0}.busch-ui-section{min-width:0}
 .busch-ui-section>summary{cursor:pointer;min-height:44px;box-sizing:border-box;overflow-wrap:anywhere;font-weight:var(--ha-font-weight-medium,500)}
 .busch-ui-section>summary:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
-.busch-ui-validation{color:var(--error-color,#db4437);overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
+.busch-ui-validation{color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121));overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
 `;
   return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,mayAct,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,sectionHeading,action,section,stateBlock,dialogHistory,focusTrap,register,styles,cardStyles,editorStyles});
 })();
