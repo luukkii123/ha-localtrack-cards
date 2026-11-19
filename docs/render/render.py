@@ -724,7 +724,7 @@ try:
             voll_breit(p)
             p.evaluate("""() => {
                 const c = window.__card;
-                c._showStatus(c._t.nicht_eingerichtet);
+                c._showStatus('error', c._t.nicht_eingerichtet);
             }""")
 
         regel1_fehlerzustand = lauf_breiten(
@@ -732,7 +732,7 @@ try:
             messung=lambda p: messe_text(p, "localtrack-timeline-card"),
             vor_messung=fehlerzustand,
         )
-        page.evaluate("() => window.__card._showStatus('')")
+        page.evaluate("() => window.__card._showStatus(null)")
 
         # ── Regel 4: je ein Bild pro Thema bei 320 px ──────────────────────
         # Die Zahlen oben belegen Lage und Groesse, nicht Lesbarkeit. Schrift
@@ -782,7 +782,9 @@ try:
                   ariaBusyListe: liste.getAttribute('aria-busy'),
                   ariaBusyKarte: sr.querySelector('.map-wrap').getAttribute('aria-busy'),
                   deckkraftListe: Number(getComputedStyle(liste).opacity),
-                  hinweis: ueber.textContent.trim(),
+                  // M27: the state block carries icon and title; the title is the hint.
+                  hinweis: (ueber.querySelector('.busch-state-title') || ueber).textContent.trim(),
+                  rolle: ueber.getAttribute('role'), live: ueber.getAttribute('aria-live'),
                   hinweisSichtbar: getComputedStyle(ueber).display !== 'none',
                   hinweisDurchscheinend: getComputedStyle(ueber).backgroundColor,
                   wegDa: sr.querySelectorAll('.leaflet-overlay-pane path').length > 0,
@@ -1005,6 +1007,8 @@ checks.update({
         for m in _stale),
     "stale-loading: Ladehinweis sichtbar": all(
         m["hinweisSichtbar"] and m["hinweis"] == "Lade …" for m in _stale),
+    "stale-loading: Ladehinweis als Live-Region (M27)": all(
+        m["rolle"] == "status" and m["live"] == "polite" for m in _stale),
     "stale-loading: Regel 1 ohne Befund": all(
         len(m["regel1"][k]) == 0 for m in _stale for k in ("ueberlauf", "ausserhalb", "ueberlappung")),
     "stale-loading: nach der Antwort nicht mehr busy": all(

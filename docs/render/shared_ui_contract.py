@@ -259,7 +259,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                               root.querySelector('table').hidden = saved.tableHidden;
                               card._result = saved.result;
                             }
-                            card._showStatus('');
+                            card._showStatus(null);
                           };
                           if (name === 'timeline') {
                             root.querySelector('.segments').innerHTML = '';
@@ -269,13 +269,14 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                               : state === 'empty' ? card._t.keine_punkte
                               : state === 'missing' ? card._t.nicht_eingerichtet
                               : card._t.ladefehler;
-                            card._showStatus(message);
+                            // M27: kind of the state block, loading/empty a status, the rest an alert.
+                            card._showStatus(state === 'loading' || state === 'empty' ? state : 'error', message);
                           } else if (state === 'empty') {
                             card._result = {days:[],days_present:0,total_net_s:0,
                               total_gross_s:0,total_visits:0};
                             const days = new Date(card._month.year, card._month.month, 0).getDate();
                             card._render(days, card._month);
-                            card._showStatus('');
+                            card._showResultState();
                           } else {
                             root.querySelector('tbody').innerHTML = '';
                             root.querySelector('tfoot').innerHTML = '';
@@ -285,7 +286,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                               : state === 'missing' ? card._t.zone_ohne_koordinaten
                                   .replace('{zone}', 'zone.work')
                               : card._t.ladefehler;
-                            card._showStatus(message);
+                            card._showStatus(state === 'loading' ? 'loading' : 'error', message);
                           }
                         }""", {"name": name, "state": state})
                         state_text = messe_text(page, tag)
@@ -449,8 +450,11 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                 total_gross_s:0,total_visits:0};
               card._render(new Date(card._month.year, card._month.month, 0).getDate(),
                 card._month);
+              card._showResultState();
+              // M27: an empty month is the state block above the hidden table, not a note line.
               const empty = root.querySelector('table').getBoundingClientRect().height === 0
-                && root.querySelector('.note').textContent.trim().length > 0;
+                && root.querySelector('.status').getAttribute('data-kind') === 'empty'
+                && root.querySelector('.status .busch-state-title').textContent.trim().length > 0;
               card._hass.callWS = async message => {
                 if (message.type === 'localtrack/zone_time') throw {code:'failure'};
                 return previousCall(message);

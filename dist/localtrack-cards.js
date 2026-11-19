@@ -1040,6 +1040,23 @@ const PREVIEW_DAY = [
 const PREVIEW_ROUTE = "12,30 20,26 31,24 40,18 52,15 63,12 74,11 86,10";
 const PREVIEW_STAYS = [[12, 30], [86, 10]];
 
+/* ── loading, empty and error state (M27) ──────────────────────────────── */
+
+/** Fills `node`, a live region in the skeleton of both cards, with
+ *  BuschUI.stateBlock. Without `kind` the content goes and the node falls back
+ *  to a polite status, so it can announce the next state. */
+function showCardState(node, kind, title) {
+  if (kind) {
+    BuschUI.stateBlock({ node, kind, title });
+    return;
+  }
+  node.replaceChildren();
+  node.removeAttribute("aria-busy");
+  node.removeAttribute("data-kind");
+  setAttr(node, "role", "status");
+  setAttr(node, "aria-live", "polite");
+}
+
 /* ── the card ───────────────────────────────────────────────────────────── */
 
 const LOCALTRACK_SHARED_UI_STYLES = BuschUI.cardStyles + `
@@ -1354,7 +1371,6 @@ class LocaltrackTimelineCard extends HTMLElement {
           justify-content: center; text-align: center; overflow: hidden;
           padding: var(--ha-space-4, 16px); box-sizing: border-box;
           background: var(--card-background-color, #fff); z-index: 1100;
-          font-size: var(--ha-font-size-s, 0.9em); color: var(--secondary-text-color, #555);
           overflow-wrap: anywhere;
         }
         /* Solange die Box steht, hat Leaflets Bedienung nichts zu suchen: die
@@ -1368,7 +1384,6 @@ class LocaltrackTimelineCard extends HTMLElement {
            Kein Leeren, kein Layoutsprung. */
         .map-overlay.stale {
           background: color-mix(in srgb, var(--card-background-color, #fff) 60%, transparent);
-          color: var(--primary-text-color);
         }
         ha-card.stale .segments, ha-card.stale .scrubber { opacity: 0.55; }
         /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
@@ -1457,7 +1472,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         </div>
         <div class="map-wrap">
           <div class="map"></div>
-          <div class="map-overlay"></div>
+          <div class="map-overlay" role="status" aria-live="polite"></div>
         </div>
         <div class="scrubber">
           <div class="scrub-head">
@@ -1560,7 +1575,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       stale = this._points.length > 0;
       if (!stale) this._clearDayDetails();
       this._setStale(stale);
-      this._showStatus(this._t.laden);
+      this._showStatus("loading", this._t.laden);
     }
     try {
       // The request goes out first (#1304, M54): its answer must not wait
@@ -1620,9 +1635,9 @@ class LocaltrackTimelineCard extends HTMLElement {
       if (this._day !== day || generation !== this._loadGeneration) return;
       this._renderTrack({ preserveInteraction });
       if (this._points.length === 0) {
-        this._showStatus(this._t.keine_punkte);
+        this._showStatus("empty", this._t.keine_punkte);
       } else {
-        this._showStatus("");
+        this._showStatus(null);
       }
     } catch (error) {
       this._lastError = error;
@@ -1634,7 +1649,7 @@ class LocaltrackTimelineCard extends HTMLElement {
         this._pointsDay = null;
         this._clearDayDetails();
       }
-      this._showStatus(this._errorMessage(error));
+      this._showStatus("error", this._errorMessage(error));
     } finally {
       this._loading = false;
       const pending = this._pendingLoad;
@@ -2062,7 +2077,7 @@ class LocaltrackTimelineCard extends HTMLElement {
     const t = this._t;
     const locale = this._hass?.locale?.language || BROWSER_LANG;
     this._clearDayDetails();
-    this._showStatus("");
+    this._showStatus(null);
     const svgNs = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNs, "svg");
     svg.setAttribute("class", "preview-route");
@@ -2116,12 +2131,16 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._segmentsEl.replaceChildren(...rows);
   }
 
-  _showStatus(text) {
+  /** The state over the map (M27): `kind` loading, empty or error, drawn by
+   *  BuschUI.stateBlock into the overlay. The overlay is a live region from
+   *  `_build` on, so the change is announced; null clears it and the region
+   *  stays a polite status. */
+  _showStatus(kind, title) {
     if (this._overlayEl) {
-      this._overlayEl.textContent = text;
-      this._overlayEl.style.display = text ? "" : "none";
+      showCardState(this._overlayEl, kind, title);
+      this._overlayEl.style.display = kind ? "" : "none";
     }
-    if (this._mapWrapEl) this._mapWrapEl.classList.toggle("busy", Boolean(text));
+    if (this._mapWrapEl) this._mapWrapEl.classList.toggle("busy", Boolean(kind));
   }
 }
 
@@ -2441,8 +2460,8 @@ const ZONE_TIME_STYLES = `
      statt die Karte zu sprengen (Regel 1). */
   .note { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color, #727272);
           overflow-wrap: anywhere; }
-  .status { padding: 14px 0; text-align: center; color: var(--secondary-text-color, #727272);
-            font-size: var(--ha-font-size-s, 0.9em); overflow-wrap: anywhere; }
+  /* Zustand (M27): BuschUI.stateBlock, Icon und Satz; nur der Abstand ist eigen. */
+  .status { padding: var(--ha-space-4, 16px) 0; }
   .status[hidden] { display: none; }
   /* Schmale Karte: die Bruttospalte und der Balken fliegen zuerst raus,
      die Nettozahl ist die, wegen der man hinsieht. */
@@ -2582,7 +2601,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._result = { days, days_present: days.length, total_net_s: sum("net_s"),
       total_gross_s: sum("gross_s"), total_visits: days.length };
     this._render(range.days, { year, month });
-    this._showStatus("");
+    this._showResultState();
   }
 
   _start() {
@@ -2613,7 +2632,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
             <button type="button" class="next">›</button>
           </div>
         </div>
-        <div class="status"></div>
+        <div class="status" role="status" aria-live="polite"></div>
         <table>
           <thead>
             <tr>
@@ -2818,7 +2837,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         void this._loadTracked();
         this._result = cached;
         this._render(request.days, wanted);
-        this._showStatus("");
+        this._showResultState();
         return;
       }
       // The month shown so far stays, dimmed and aria-busy, until the new
@@ -2833,14 +2852,14 @@ class LocaltrackZoneTimeCard extends HTMLElement {
         this._footEl.innerHTML = "";
         this._noteEl.textContent = "";
         this._tableEl.hidden = true;
-        this._showStatus(t.laden);
+        this._showStatus("loading", t.laden);
       }
       await this._loadTracked();
       if (!request) {
         this._setStale(false);
         this._tableEl.hidden = true;
         this._noteEl.textContent = "";
-        this._showStatus(fillText(t.zone_ohne_koordinaten, { zone: this._zone }));
+        this._showStatus("error", fillText(t.zone_ohne_koordinaten, { zone: this._zone }));
         this._bodyEl.innerHTML = "";
         this._footEl.innerHTML = "";
         return;
@@ -2855,9 +2874,9 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       }
       this._result = result;
       this._render(request.days, wanted);
-      this._showStatus("");
+      this._showResultState();
     } catch (error) {
-      this._showStatus(this._errorMessage(error));
+      this._showStatus("error", this._errorMessage(error));
       this._bodyEl.innerHTML = "";
       this._footEl.innerHTML = "";
       this._noteEl.textContent = "";
@@ -2921,11 +2940,19 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     return detail ? fillText(t.ladefehler_grund, { grund: detail }) : t.ladefehler;
   }
 
-  _showStatus(text) {
+  /** The state above the table (M27): `kind` loading, empty or error through
+   *  BuschUI.stateBlock in the live region of `_build`; null hides it. */
+  _showStatus(kind, title) {
     if (!this._statusEl) return;
-    this._statusEl.textContent = text;
-    this._statusEl.hidden = !text;
-    this._statusEl.dataset.tone = BuschUI.statusSemantic(this._loading ? "starting" : text ? "failed" : "stopped");
+    showCardState(this._statusEl, kind, title);
+    this._statusEl.hidden = !kind;
+  }
+
+  /** After `_render`: a month without presence is the empty state, the same
+   *  block as loading and error (M27), not a line under a hidden table. */
+  _showResultState() {
+    if (this._result?.days_present) this._showStatus(null);
+    else this._showStatus("empty", this._t.keine_anwesenheit);
   }
 
   /* ── Darstellung ────────────────────────────────────────────────────── */
@@ -2991,9 +3018,10 @@ class LocaltrackZoneTimeCard extends HTMLElement {
       </tr>`;
 
     const visits = this._result.total_visits || 0;
+    // A month without presence shows the empty state instead (`_showResultState`).
     this._noteEl.textContent = present
       ? fillText(t.notiz, { tage: present, gesamt: daysInMonth, besuche: visits })
-      : t.keine_anwesenheit;
+      : "";
   }
 }
 
