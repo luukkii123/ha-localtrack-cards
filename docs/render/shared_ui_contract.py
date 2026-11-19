@@ -36,7 +36,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 CASES = (
     ("timeline", "render.py", "localtrack-timeline-card", ".header", ".controls input[type=date]",
-     (".controls input[type=date]", ".scrubber input[type=range]",
+     (".controls input[type=date]", ".controls button", ".scrubber input[type=range]",
       ".leaflet-control-zoom-in", ".leaflet-control-zoom-out", ".segment")),
     ("zonetime", "zonetime.py", "localtrack-zone-time-card", ".head", ".pickers select",
      (".pickers select", ".month button")),

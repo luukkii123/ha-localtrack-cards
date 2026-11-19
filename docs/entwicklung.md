@@ -42,7 +42,7 @@ genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 
 | Skript | Prüft |
 | --- | --- |
-| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf; Variante `stale-loading`: Tageswechsel mit hängender Antwort, alter Tag gedimmt mit `aria-busy` |
+| `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf; Variante `stale-loading`: Tageswechsel mit hängender Antwort, alter Tag gedimmt mit `aria-busy`; Zeitregler (M56): gestaltet, 44 px, im Bild, beschriftet, Pfeiltasten und `aria-valuetext`, Tageswahl mit Beschriftung, `lang` und Vor/Zurück (Bild `timeline-scrubber.png`) |
 | `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen; Variante `stale-loading`: Monatswechsel mit hängender Antwort, alter Monat gedimmt mit `aria-busy`, Hinweis in der Notizzeile |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext) |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |
@@ -61,7 +61,9 @@ Personen und Zonen).
 
 Das Datumsfeld der Timeline zeigt in den Bildern `MM/TT/JJJJ`. Das ist ein
 Artefakt des Headless-Chromiums; im Browser des Nutzers steht das Datum in der
-eingestellten Sprache.
+eingestellten Sprache. Das Feld trägt `lang` aus `hass.locale`; ob der Browser
+das Format danach richtet, entscheidet der Browser (Chromium nimmt meist die
+Sprache der Browseroberfläche).
 
 ## Technische Hinweise
 

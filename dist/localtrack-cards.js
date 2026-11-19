@@ -410,7 +410,11 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       strecke: "Strecke",
       unterwegs: "unterwegs",
       tag_waehlen: "Tag wählen",
-      zeitpunkt: "Zeitpunkt am Tag",
+      tag: "Tag",
+      voriger_tag: "Voriger Tag",
+      naechster_tag: "Nächster Tag",
+      zeitpunkt: "Uhrzeit",
+      zeigt_auf_karte: "Zeigt den Abschnitt auf der Landkarte.",
       dauer_hm: "{h} h {min} min",
       dauer_m: "{min} min",
       km: "{wert} km",
@@ -458,7 +462,11 @@ const TEXTE_LOCALTRACK_TIMELINE_CARD = {
       strecke: "Trip",
       unterwegs: "on the move",
       tag_waehlen: "Pick a day",
+      tag: "Day",
+      voriger_tag: "Previous day",
+      naechster_tag: "Next day",
       zeitpunkt: "Time of day",
+      zeigt_auf_karte: "Shows this part on the map.",
       dauer_hm: "{h} h {min} min",
       dauer_m: "{min} min",
       km: "{wert} km",
@@ -515,6 +523,18 @@ function localDayBounds(dateStr) {
   const start = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
   const end = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999);
   return { start, end };
+}
+
+/** Sets an attribute only when its value differs. */
+function setAttr(el, name, value) {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
+/** `YYYY-MM-DD` of a local date, the value format of `<input type=date>`. */
+function dayString(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function formatClock(date, locale) {
@@ -1125,10 +1145,15 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   _todayString() {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    return `${now.getFullYear()}-${month}-${day}`;
+    return dayString(new Date());
+  }
+
+  /** One day back or forward (M56); the date field shows the new day. */
+  _shiftDay(delta) {
+    const [year, month, day] = (this._day || this._todayString()).split("-").map(Number);
+    this._day = dayString(new Date(year, month - 1, day + delta));
+    this._dateEl.value = this._day;
+    this._loadDay();
   }
 
   _build() {
@@ -1163,8 +1188,25 @@ class LocaltrackTimelineCard extends HTMLElement {
           flex: 1 1 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .controls { display: flex; gap: ${BuschUI.tokens.space2}; align-items: center; flex: 0 0 auto; }
+        .controls { display: flex; gap: ${BuschUI.tokens.space1}; align-items: center; flex: 0 0 auto; min-width: 0; }
+        /* Regel 1: einzeilige Beschriftung, gekuerzt statt umgebrochen. */
+        .controls .day-name, .scrubber .scrub-name {
+          flex: 0 1 auto; min-width: 0; font-size: var(--ha-font-size-s, 0.85em);
+          color: var(--secondary-text-color);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .controls .day-name { margin-inline-end: var(--ha-space-1, 4px); }
+        /* Wie die Monatsknoepfe der Verweildauer-Karte (R01): 44 px, Zeichen. */
+        .controls button {
+          display: inline-flex; align-items: center; justify-content: center;
+          box-sizing: border-box; width: 44px; min-height: 44px; padding: 0;
+          border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
+          border-radius: var(--ha-card-border-radius, 8px);
+          color: var(--primary-text-color); flex: 0 0 auto;
+        }
+        .controls button:hover { background: var(--secondary-background-color, #e5e5e5); }
         .controls input[type="date"] {
+          flex: 0 1 auto; min-width: 0;
           box-sizing: border-box; min-height: 44px;
           font: inherit; font-size: var(--ha-font-size-s, 0.9em); max-width: 100%;
           color: var(--primary-text-color); background: var(--card-background-color, #fff);
@@ -1173,7 +1215,8 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         @container (max-width: 440px) {
           .header { display: grid; grid-template-columns: minmax(0, 1fr); }
-          .controls, .controls input[type="date"] { width: 100%; }
+          .controls { width: 100%; }
+          .controls input[type="date"] { flex: 1 1 auto; }
         }
         .map-wrap { position: relative; border-radius: var(--ha-card-border-radius, 8px); overflow: hidden; }
         .map { width: 100%; height: 320px; background: var(--secondary-background-color, #dde5ec); }
@@ -1208,13 +1251,45 @@ class LocaltrackTimelineCard extends HTMLElement {
         ha-card.stale .segments, ha-card.stale .scrubber { opacity: 0.55; }
         /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
         .map svg.preview-route { display: block; width: 100%; height: 100%; }
-        .scrubber {
-          display: flex; gap: ${BuschUI.tokens.space2}; align-items: center;
-          margin-top: var(--ha-space-2, 8px);
+        /* Zeitregler (M56): Beschriftung und Wert ueber einem eigenen Schieber,
+           Schiene und Daumen in der Primaerfarbe, 44 px hohe Trefferflaeche. */
+        .scrubber { margin-top: var(--ha-space-2, 8px); }
+        .scrubber .scrub-head {
+          display: flex; gap: ${BuschUI.tokens.space2}; align-items: baseline;
+          justify-content: space-between; min-width: 0;
         }
-        .scrubber input[type="range"] { flex: 1 1 auto; min-width: 0; min-height: 44px; }
+        .scrubber input[type="range"] {
+          -webkit-appearance: none; appearance: none; display: block;
+          box-sizing: border-box; width: 100%; height: 44px; min-height: 44px; margin: 0;
+          background: transparent; cursor: pointer;
+        }
+        .scrubber input[type="range"]:disabled { cursor: default; opacity: 0.5; }
+        .scrubber input[type="range"]::-webkit-slider-runnable-track {
+          height: 6px; border-radius: 3px;
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
+        }
+        .scrubber input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none; box-sizing: border-box;
+          width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
+          background: var(--primary-color, #03a9f4);
+          border: 2px solid var(--card-background-color, #fff);
+          box-shadow: 0 0 0 1px var(--primary-color, #03a9f4);
+        }
+        .scrubber input[type="range"]::-moz-range-track {
+          height: 6px; border-radius: 3px;
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
+        }
+        .scrubber input[type="range"]::-moz-range-progress {
+          height: 6px; border-radius: 3px; background: var(--primary-color, #03a9f4);
+        }
+        .scrubber input[type="range"]::-moz-range-thumb {
+          box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%;
+          background: var(--primary-color, #03a9f4);
+          border: 2px solid var(--card-background-color, #fff);
+          box-shadow: 0 0 0 1px var(--primary-color, #03a9f4);
+        }
         .scrubber .scrub-label {
-          flex: 0 1 auto; min-width: 0; max-width: 60%; text-align: right;
+          flex: 0 1 auto; min-width: 0; max-width: 70%; text-align: right;
           font-size: var(--ha-font-size-s, 0.85em); color: var(--secondary-text-color);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -1251,7 +1326,10 @@ class LocaltrackTimelineCard extends HTMLElement {
         <div class="header">
           <div class="title"></div>
           <div class="controls">
-            <input type="date">
+            <label class="day-name" for="lt-day"></label>
+            <button type="button" class="day-prev">‹</button>
+            <input type="date" id="lt-day">
+            <button type="button" class="day-next">›</button>
           </div>
         </div>
         <div class="map-wrap">
@@ -1259,8 +1337,11 @@ class LocaltrackTimelineCard extends HTMLElement {
           <div class="map-overlay"></div>
         </div>
         <div class="scrubber">
-          <input type="range" min="0" max="0" value="0" step="1">
-          <div class="scrub-label"></div>
+          <div class="scrub-head">
+            <label class="scrub-name" for="lt-scrub"></label>
+            <div class="scrub-label"></div>
+          </div>
+          <input type="range" id="lt-scrub" min="0" max="0" value="0" step="1">
         </div>
         <div class="segments"></div>
       </ha-card>
@@ -1283,6 +1364,14 @@ class LocaltrackTimelineCard extends HTMLElement {
     // New elements: the text caches of _applyTexts/_syncTitle start empty.
     this._textsLang = null;
     this._titleText = null;
+    this._dateLang = null;
+    this._valueText = null;
+
+    // Named here, before the first `hass` (M56); `_applyTexts` follows the language.
+    BuschUI.action({ node: this.shadowRoot.querySelector(".day-prev"), label: this._t.voriger_tag,
+      onClick: () => this._shiftDay(-1) });
+    BuschUI.action({ node: this.shadowRoot.querySelector(".day-next"), label: this._t.naechster_tag,
+      onClick: () => this._shiftDay(1) });
 
     const config = this._config || {};
     this._syncTitle();
@@ -1481,6 +1570,10 @@ class LocaltrackTimelineCard extends HTMLElement {
     this._scrubberEl.max = "0";
     this._scrubberEl.disabled = true;
     this._scrubberEl.closest(".scrubber").style.display = "none";
+    if (this._valueText !== null) {
+      this._valueText = null;
+      this._scrubberEl.removeAttribute("aria-valuetext");
+    }
   }
 
   /** Static labels that are not part of the data: they change with the
@@ -1488,10 +1581,17 @@ class LocaltrackTimelineCard extends HTMLElement {
    *  Written only when the language changed (#1304 M22): `set hass` runs on
    *  every state change in the house and must not touch the DOM. */
   _applyTexts() {
+    // The date field formats after `hass.locale`, not after the browser (M56).
+    const lang = this._hass?.locale?.language;
+    if (this._dateEl && lang && lang !== this._dateLang) {
+      this._dateLang = lang;
+      this._dateEl.setAttribute("lang", lang);
+    }
     const sprache = this._hass ? cardLanguage(this._hass) : BROWSER_LANG;
     if (sprache === this._textsLang) return;
     this._textsLang = sprache;
     const t = this._t;
+    const root = this.shadowRoot;
     if (this._dateEl) {
       this._dateEl.title = t.tag_waehlen;
       this._dateEl.setAttribute("aria-label", t.tag_waehlen);
@@ -1499,6 +1599,16 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (this._scrubberEl) {
       this._scrubberEl.title = t.zeitpunkt;
       this._scrubberEl.setAttribute("aria-label", t.zeitpunkt);
+    }
+    const setzen = (sel, text) => {
+      const el = root?.querySelector(sel);
+      if (el) el.textContent = text;
+    };
+    setzen(".day-name", t.tag);
+    setzen(".scrub-name", t.zeitpunkt);
+    for (const [sel, text] of [[".day-prev", t.voriger_tag], [".day-next", t.naechster_tag]]) {
+      const button = root?.querySelector(sel);
+      if (button) { button.title = text; button.setAttribute("aria-label", text); }
     }
   }
 
@@ -1669,7 +1779,13 @@ class LocaltrackTimelineCard extends HTMLElement {
     } else {
       this._currentMarker.setLatLng([point.lat, point.lon]);
     }
-    this._scrubLabelEl.textContent = `${formatClock(date, this._hass?.locale?.language || "de")} · ${zone}`;
+    const valueText = `${formatClock(date, this._hass?.locale?.language || "de")} · ${zone}`;
+    this._scrubLabelEl.textContent = valueText;
+    // The slider itself says what it points at (M56), written only on a change.
+    if (valueText !== this._valueText) {
+      this._valueText = valueText;
+      this._scrubberEl.setAttribute("aria-valuetext", valueText);
+    }
     if (this._hass?.locale?.language) this._scrubLabelEl.style.fontFamily = "";
     if (pan && !this._map.getBounds().contains([point.lat, point.lon])) {
       this._map.panTo([point.lat, point.lon]);
@@ -1762,6 +1878,9 @@ class LocaltrackTimelineCard extends HTMLElement {
       const labelEl = row.querySelector(".label");
       if (labelEl.textContent !== label) labelEl.textContent = label;
       row.querySelector(".meta").textContent = meta;
+      // The row reads as one sentence and says what activating it does (M56).
+      setAttr(row, "aria-label", `${times}, ${label}, ${meta}`);
+      setAttr(row, "aria-description", t.zeigt_auf_karte);
       rows.push(row);
     }
     // Snapshot immediately before reconciliation: a row that has to move
@@ -1799,7 +1918,11 @@ class LocaltrackTimelineCard extends HTMLElement {
       const row = Array.from(this._segmentsEl.children)
         .find((candidate) => candidate.dataset.segmentKey === key);
       const labelEl = row?.querySelector(".label");
-      if (labelEl && labelEl.textContent !== name) labelEl.textContent = name;
+      if (labelEl && labelEl.textContent !== name) {
+        labelEl.textContent = name;
+        setAttr(row, "aria-label", [".times", ".label", ".meta"]
+          .map((sel) => row.querySelector(sel).textContent).join(", "));
+      }
     });
   }
 
@@ -2362,9 +2485,9 @@ class LocaltrackZoneTimeCard extends HTMLElement {
             <select class="pick-zone"></select>
           </div>
           <div class="month">
-            <button class="prev">‹</button>
+            <button type="button" class="prev">‹</button>
             <span class="label"></span>
-            <button class="next">›</button>
+            <button type="button" class="next">›</button>
           </div>
         </div>
         <div class="status"></div>

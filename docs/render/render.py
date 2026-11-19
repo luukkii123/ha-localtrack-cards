@@ -30,6 +30,12 @@ Kartenwaehler (`div.preview` im Schatten von `hui-card-picker`). Belegt die
 statische Vorschau ohne WebSocket-, Kachel- und Nominatim-Abruf (Bilder
 `picker-preview.png`, `picker-preview-390.png`).
 
+Seit Buschcheck M56 misst der Lauf den **Zeitregler**: gestaltet (Schiene und
+Daumen aus `--primary-color`), 44 px hoch, im Bild der Karte, sichtbar mit
+„Uhrzeit“ beschriftet, Pfeiltasten bedienen ihn, `aria-valuetext` folgt dem Wert;
+dazu die Tageswahl mit Beschriftung, `lang` und Vor/Zurück (Bild
+`timeline-scrubber.png`).
+
 Seit #1304 (M51) dazu **stale-loading**: Tageswechsel mit haengender Antwort,
 der bisherige Tag bleibt gedimmt mit `aria-busy` stehen, der Ladehinweis liegt
 durchscheinend ueber der Karte (Bilder `timeline-320-light-stale-loading.png`,
@@ -519,6 +525,77 @@ try:
         page.screenshot(path=str(OUT / "timeline-page.png"), full_page=True)
         page.locator("localtrack-timeline-card").screenshot(path=str(OUT / "timeline-card.png"))
 
+        # ── Zeitregler und Tageswahl (M56) ─────────────────────────────────
+        # Gemessen, nicht nur abgebildet: der Schieber ist gestaltet (kein
+        # Browser-Standard, Schiene und Daumen aus --primary-color), 44 px
+        # hoch, liegt ganz im Bild der Karte und traegt eine sichtbare
+        # Beschriftung ueber sich. Pfeiltaste rechts schiebt ihn einen
+        # Schritt weiter, aria-valuetext folgt dem sichtbaren Wert. Die
+        # Tageswahl hat Beschriftung und Vor/Zurueck mit Namen und 44 px.
+        def schieber_messen():
+            return page.evaluate("""() => {
+                const card = window.__card, sr = card.shadowRoot;
+                const range = sr.querySelector('.scrubber input[type=range]');
+                const name = sr.querySelector('.scrubber .scrub-name');
+                const wert = sr.querySelector('.scrubber .scrub-label');
+                const r = (el) => el.getBoundingClientRect();
+                const karte = r(sr.querySelector('ha-card'));
+                const rr = r(range), nr = r(name), wr = r(wert);
+                const regeln = [...sr.styleSheets].flatMap((sheet) => [...sheet.cssRules])
+                  .filter((rule) => (rule.selectorText || '').includes('input[type="range"]'));
+                const regel = (pseudo) => regeln.find((rule) => rule.selectorText.endsWith(pseudo));
+                const daumen = regel('::-webkit-slider-thumb');
+                const schiene = regel('::-webkit-slider-runnable-track');
+                const knopf = (sel) => { const b = sr.querySelector(sel), br = r(b);
+                  return { name: b.getAttribute('aria-label'), typ: b.type,
+                           breite: br.width, hoehe: br.height }; };
+                return {
+                  appearance: getComputedStyle(range).appearance,
+                  hoehe: rr.height,
+                  imBild: rr.left >= karte.left - 0.5 && rr.right <= karte.right + 0.5
+                    && rr.top >= karte.top - 0.5 && rr.bottom <= karte.bottom + 0.5 && rr.width > 0,
+                  daumenPrimaer: !!daumen && daumen.style.background.includes('--primary-color'),
+                  schienePrimaer: !!schiene && schiene.style.background.includes('--primary-color'),
+                  beschriftung: name.textContent.trim(),
+                  beschriftungFuer: name.htmlFor === range.id && !!range.id,
+                  beschriftungSichtbar: nr.width > 0 && nr.height > 0
+                    && getComputedStyle(name).visibility !== 'hidden',
+                  beschriftungUeberSchieber: nr.bottom <= rr.top + 1 && wr.bottom <= rr.top + 1,
+                  ariaLabel: range.getAttribute('aria-label'),
+                  wert: wert.textContent,
+                  valuetext: range.getAttribute('aria-valuetext'),
+                  value: Number(range.value),
+                  tagBeschriftung: sr.querySelector('.controls .day-name').textContent.trim(),
+                  tagFuer: sr.querySelector('.controls .day-name').htmlFor === card._dateEl.id,
+                  datumLang: card._dateEl.getAttribute('lang'),
+                  zurueck: knopf('.day-prev'), vor: knopf('.day-next'),
+                };
+            }""")
+
+        schieber = {"vorher": schieber_messen()}
+        page.locator("localtrack-timeline-card .scrubber input[type=range]").focus()
+        page.keyboard.press("ArrowRight")
+        page.keyboard.press("ArrowRight")
+        page.wait_for_timeout(200)
+        schieber["nach_pfeil"] = schieber_messen()
+        page.locator("localtrack-timeline-card .scrubber").screenshot(
+            path=str(OUT / "timeline-scrubber.png"))
+        schieber["bild"] = "timeline-scrubber.png"
+        page.keyboard.press("Home")
+        page.wait_for_timeout(200)
+        heute = page.evaluate("() => window.__card._dateEl.value")
+        # Erst vor (morgen), dann zurueck: ein abgeschlossener Tag landete im
+        # Cache und naehme der Variante stale-loading ihren haengenden Abruf.
+        page.locator("localtrack-timeline-card .day-next").click()
+        page.wait_for_timeout(600)
+        schieber["tag_vor"] = page.evaluate("() => window.__card._dateEl.value")
+        page.locator("localtrack-timeline-card .day-prev").click()
+        page.wait_for_timeout(600)
+        schieber["tag_zurueck"] = page.evaluate("() => window.__card._dateEl.value")
+        schieber["heute"] = heute
+        page.wait_for_function(
+            "window.__card.shadowRoot.querySelectorAll('.segment').length > 0", timeout=20000)
+
         # ── Regel 3: Editor, beide Sprachen, Label UND Helper ──────────────
         # Gemessen wird der ausgelieferte Text, nicht die Existenz der
         # Funktionen: „es gibt ein Woerterbuch" belegt nicht, dass die Karte
@@ -793,6 +870,7 @@ report = {
     "mapcard": mapcard,
     "picker_preview": picker,
     "stale_loading": stale,
+    "schieber": schieber,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────
@@ -873,6 +951,28 @@ checks = {
         picker.get("zonenTabelleSichtbar") is True and picker.get("zonenZeilen", 0) >= 28,
     "picker-preview: keine Seitenfehler": picker["seitenfehler"] == [],
 }
+# Zeitregler und Tageswahl (M56): gestaltet, beschriftet, im Bild, per Taste bedienbar.
+_sv, _sn = schieber["vorher"], schieber["nach_pfeil"]
+checks.update({
+    "Schieber: gestaltet (appearance none)": _sv["appearance"] == "none",
+    "Schieber: Daumen und Schiene aus --primary-color": _sv["daumenPrimaer"] and _sv["schienePrimaer"],
+    "Schieber: Trefferflaeche mindestens 44 px hoch": _sv["hoehe"] >= 44,
+    "Schieber: ganz im Bild der Karte": _sv["imBild"],
+    "Schieber: sichtbare Beschriftung ueber dem Schieber": _sv["beschriftung"] == "Uhrzeit"
+        and _sv["beschriftungSichtbar"] and _sv["beschriftungUeberSchieber"] and _sv["beschriftungFuer"],
+    "Schieber: aria-label gleich der Beschriftung": _sv["ariaLabel"] == _sv["beschriftung"],
+    "Schieber: aria-valuetext gleich dem sichtbaren Wert": _sv["valuetext"] == _sv["wert"] != "",
+    "Schieber: Pfeiltaste schiebt weiter": _sn["value"] == _sv["value"] + 2,
+    "Schieber: aria-valuetext folgt der Pfeiltaste": _sn["valuetext"] == _sn["wert"]
+        and _sn["valuetext"] != _sv["valuetext"],
+    "Tageswahl: Beschriftung Tag am Datumsfeld": _sv["tagBeschriftung"] == "Tag" and _sv["tagFuer"],
+    "Tageswahl: Datumsfeld mit lang aus hass.locale": _sv["datumLang"] == "de",
+    "Tageswahl: Vor/Zurueck benannt, type button, 44 px": all(
+        k["name"] and k["typ"] == "button" and k["breite"] >= 44 and k["hoehe"] >= 44
+        for k in (_sv["zurueck"], _sv["vor"])),
+    "Tageswahl: Vor und Zurueck wechseln den Tag": schieber["tag_vor"] > schieber["heute"]
+        and schieber["tag_zurueck"] == schieber["heute"],
+})
 # stale-loading (#1304, M51): alter Tag bleibt gedimmt und aria-busy stehen.
 _stale = [l["messung"] for l in stale["laeufe"]]
 checks.update({

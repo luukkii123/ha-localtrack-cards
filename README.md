@@ -69,9 +69,11 @@ entity: person.beispiel
 | `max_points` | Zahl | `2000` | Höchstzahl der Punkte je Tag (Editor: 100–5000) |
 | `tile_url` | Text | leer | leer: OpenStreetMap; sonst eine eigene Kachel-URL im Leaflet-Format |
 
-Bedienung: Das **Datum** oben rechts wählt den Tag (Vorgabe heute). Der
+Bedienung: Das **Datum** oben rechts wählt den Tag (Vorgabe heute), die
+Pfeilschaltflächen daneben blättern einen Tag zurück oder vor. Der
 **Zeitregler** fährt die Route ab und zeigt Uhrzeit und Zone (oder
-„unterwegs"). Bei heutigem Datum holt die Karte nach einer Positionsänderung
+„unterwegs"); er lässt sich auch mit den Pfeiltasten bedienen. Ein Klick auf
+einen Eintrag der Liste zeigt diesen Abschnitt auf der Landkarte. Bei heutigem Datum holt die Karte nach einer Positionsänderung
 nach rund 30 Sekunden nur die neuen Punkte nach; der Kartenausschnitt bleibt
 dabei stehen, und in einem verborgenen Tab wird erst beim Zurückkehren geladen.
 
