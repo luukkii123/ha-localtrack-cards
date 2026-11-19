@@ -32,3 +32,18 @@ test("state box without old content: the empty map under it is not painted", () 
   assert.ok(r, "rule for the busy map without old content");
   assert.equal(r.visibility, "hidden");
 });
+
+test("stale loading hint: a compact box at the top, not over the middle of the map", () => {
+  const r = regel(".map-overlay.stale");
+  assert.ok(r, "rule .map-overlay.stale");
+  assert.equal(r.bottom, "auto", "box ends at its content, the map below stays free");
+  assert.match(r.top || r.inset || "", /var\(--ha-space-2/, "box sits at the top edge");
+  assert.equal(r.overflow, undefined, "overflow hidden comes from .map-overlay");
+  assert.match(r["max-width"] || "", /calc\(100% - /, "box stays inside the map");
+});
+
+test("stale loading: the old map is dimmed itself, not by a see-through hint", () => {
+  const r = regel("ha-card.stale .map");
+  assert.ok(r, "rule ha-card.stale .map");
+  assert.ok(Number(r.opacity) > 0 && Number(r.opacity) < 1, `opacity ${r.opacity}`);
+});

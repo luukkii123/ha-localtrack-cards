@@ -76,6 +76,8 @@ const FAELLE = [
   ["stay pin number on its fill", () => nadel("color"), () => nadel("background")],
   ["segment meta (duration, km) on the row", () => regel(".segment .meta", "color"), () => regel(".segment", "background")],
   ["zone time: empty day row on the card", () => regel("tr.empty td", "color"), () => "var(--card-background-color)"],
+  // #1318 image review: the loading hint over the old map has its own opaque surface.
+  ["timeline: stale loading hint on its surface", () => "var(--primary-text-color)", () => regel(".map-overlay.stale", "background")],
 ];
 
 for (const [name, vorne, hinten] of FAELLE) {

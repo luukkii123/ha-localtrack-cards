@@ -88,7 +88,7 @@ test("timeline: while a new day loads the old day stays dimmed with aria-busy", 
   assert.equal(card._segmentsEl.getAttribute("aria-busy"), "true");
   assert.equal(card._mapWrapEl.getAttribute("aria-busy"), "true");
   assert.ok(card._cardEl.classList.contains("stale"), "dimmed");
-  assert.ok(card._overlayEl.classList.contains("stale"), "see-through loading hint");
+  assert.ok(card._overlayEl.classList.contains("stale"), "loading hint box over the old map");
   assert.equal(card._overlayEl.textContent, card._t.laden);
   assert.equal(card._scrubberEl.disabled, false, "scrubber not cleared");
   ha.release("localtrack/history");

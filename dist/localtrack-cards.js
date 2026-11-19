@@ -1404,11 +1404,24 @@ class LocaltrackTimelineCard extends HTMLElement {
            shared_ui_contract.py an den Eckpixeln). */
         ha-card:not(.stale) .map-wrap.busy .map { visibility: hidden; }
         /* Laedt mit altem Inhalt (#1304, M51): der bisherige Tag bleibt
-           gedimmt stehen, der Ladehinweis liegt durchscheinend darueber.
-           Kein Leeren, kein Layoutsprung. */
+           gedimmt stehen. Kein Leeren, kein Layoutsprung. Der Ladehinweis ist
+           eine kleine deckende Box oben in der Landkarte, nicht mehr ein
+           durchscheinender Schleier mit dem Satz in der Mitte: dort lag er auf
+           Weg und Nadeln, mit schwachem Kontrast zur Landkarte darunter
+           (Bildpruefung #1318). Regel 1: die Box liegt in .map-wrap
+           (overflow: hidden, Hoehe aus der Landkarte, nicht aus dem Text),
+           ist auf deren Breite begrenzt und bricht lange Saetze um. */
         .map-overlay.stale {
-          background: color-mix(in srgb, var(--card-background-color, #fff) 60%, transparent);
+          top: var(--ha-space-2, 8px); right: var(--ha-space-2, 8px);
+          bottom: auto; left: var(--ha-space-2, 8px);
+          width: fit-content; max-width: calc(100% - 2 * var(--ha-space-2, 8px));
+          margin-inline: auto; flex-direction: row;
+          padding: var(--ha-space-2, 8px) var(--ha-space-3, 12px);
+          background: var(--card-background-color, #fff);
+          border-radius: ${BuschUI.tokens.radiusInner};
+          border: 1px solid var(--divider-color, #e0e0e0);
         }
+        ha-card.stale .map { opacity: 0.4; }
         ha-card.stale .segments, ha-card.stale .scrubber { opacity: 0.55; }
         /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
         .map svg.preview-route { display: block; width: 100%; height: 100%; }
@@ -1718,7 +1731,7 @@ class LocaltrackTimelineCard extends HTMLElement {
   }
 
   /** Loading with old content (#1304, M51): the shown day stays, dimmed and
-   *  `aria-busy`, the loading hint lies see-through over the old map. */
+   *  `aria-busy`, the loading hint is a small opaque box at the top of the map (#1318). */
   _setStale(on) {
     if (Boolean(this._stale) === on) return;
     this._stale = on;

@@ -37,8 +37,9 @@ dazu die Tageswahl mit Beschriftung, `lang` und Vor/Zurück (Bild
 `timeline-scrubber.png`).
 
 Seit #1304 (M51) dazu **stale-loading**: Tageswechsel mit haengender Antwort,
-der bisherige Tag bleibt gedimmt mit `aria-busy` stehen, der Ladehinweis liegt
-durchscheinend ueber der Karte (Bilder `timeline-320-light-stale-loading.png`,
+der bisherige Tag bleibt gedimmt mit `aria-busy` stehen, der Ladehinweis steht
+seit #1318 als deckende Box oben in der Karte, gemessen auf Lage, Nadeln und
+Kontrast (Bilder `timeline-320-light-stale-loading.png`,
 `timeline-320-dark-stale-loading.png`).
 
 Auf diesem Server läuft Playwright nur im Container. Der Aufruf braucht
@@ -69,7 +70,7 @@ for _kandidat in ("/work",
                   str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if _kandidat not in sys.path:
         sys.path.append(_kandidat)
-from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_text, selbsttest, zaehle
+from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_kontrast_touch_hier, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -772,7 +773,7 @@ try:
         # ── Variante „stale-loading" (#1304, M51) ──────────────────────────
         # Tageswechsel mit haengender Antwort: der heutige Tag bleibt gedimmt
         # und aria-busy stehen (Liste, Zeitregler, Weg), der Ladehinweis
-        # liegt durchscheinend ueber der Karte. Gestern ist ein abgeschlossener
+        # steht als deckende Box oben in der Karte (#1318). Gestern ist ein abgeschlossener
         # Tag, aber noch nie gesehen, kommt also nicht aus dem Cache. Danach
         # zurueck auf heute. Je Thema ein Bild, dazu Regel 1 in diesem Zustand.
         def stale_bild(p):
@@ -806,10 +807,48 @@ try:
                   hinweis: (ueber.querySelector('.busch-state-title') || ueber).textContent.trim(),
                   rolle: ueber.getAttribute('role'), live: ueber.getAttribute('aria-live'),
                   hinweisSichtbar: getComputedStyle(ueber).display !== 'none',
-                  hinweisDurchscheinend: getComputedStyle(ueber).backgroundColor,
+                  hinweisFlaeche: getComputedStyle(ueber).backgroundColor,
                   wegDa: sr.querySelectorAll('.leaflet-overlay-pane path').length > 0,
                 };
             }""")
+            # #1318 image review: the hint sat on route and pin "3" in the middle
+            # of the map, on a 60 % veil. Now measured: the hint box lies in the
+            # top quarter of the map, crosses no stay pin, and the title has an
+            # opaque surface of its own inside the hint (otherwise the contrast
+            # measurement would compare it with the card behind the map, not
+            # with the map it is painted on), with at least 4.5:1 on it.
+            werte.update(p.evaluate("""() => {
+                const sr = window.__card.shadowRoot;
+                const ueber = sr.querySelector('.map-overlay');
+                const titel = ueber.querySelector('.busch-state-title') || ueber;
+                const r = ueber.getBoundingClientRect(), karte = sr.querySelector('.map-wrap').getBoundingClientRect();
+                const nadeln = [...sr.querySelectorAll('.leaflet-marker-icon')]
+                  .map((n) => n.getBoundingClientRect()).filter((n) => n.width > 0 && n.height > 0);
+                const schneidet = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+                const rgba = (s) => { const m = String(s).match(/rgba?\(([^)]+)\)/); if (!m) return null;
+                  const t = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [t[0], t[1], t[2], t.length > 3 ? t[3] : 1]; };
+                let flaeche = null, flaecheIm = false;
+                for (let n = titel; n && n !== sr; n = n.parentElement) {
+                  const c = rgba(getComputedStyle(n).backgroundColor);
+                  if (c && c[3] >= 1) { flaeche = c; flaecheIm = ueber.contains(n); break; }
+                }
+                const lum = (c) => { const l = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+                  return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+                const vorne = rgba(getComputedStyle(titel).color);
+                const q = flaeche && vorne ? (Math.max(lum(vorne), lum(flaeche)) + 0.05) / (Math.min(lum(vorne), lum(flaeche)) + 0.05) : 0;
+                return {
+                  hinweisOben: r.top >= karte.top && r.bottom <= karte.top + karte.height / 4,
+                  hinweisImBild: r.left >= karte.left && r.right <= karte.right,
+                  nadeln: nadeln.length,
+                  nadelnFrei: nadeln.every((n) => !schneidet(r, n)),
+                  hinweisDeckend: flaecheIm,
+                  hinweisKontrast: Math.round(q * 100) / 100,
+                };
+            }"""))
+            # The general M26 measurement over the hint alone (the dimmed old
+            # day around it is meant to be faint, aria-busy, and stays out).
+            werte["hinweis_kontrast_touch"] = messe_kontrast_touch_hier(
+                p, ".map-overlay", ausnahmen=pathlib.Path(__file__).with_name("kontrast-ausnahmen.json"))
             werte["vorher"] = vorher
             werte["regel1"] = messe_text(p, "localtrack-timeline-card")
             name = "timeline-320-%s-stale-loading.png" % thema
@@ -1041,6 +1080,15 @@ checks.update({
         m["rolle"] == "status" and m["live"] == "polite" for m in _stale),
     "stale-loading: Regel 1 ohne Befund": all(
         len(m["regel1"][k]) == 0 for m in _stale for k in ("ueberlauf", "ausserhalb", "ueberlappung")),
+    "stale-loading: Ladehinweis oben in der Landkarte, verdeckt keine Nadel (#1318)": all(
+        m["hinweisOben"] and m["hinweisImBild"] and m["nadeln"] > 0 and m["nadelnFrei"] for m in _stale),
+    "stale-loading: Ladehinweis deckend hinterlegt, mindestens 4,5:1 (#1318)": all(
+        m["hinweisDeckend"] and m["hinweisKontrast"] >= 4.5 for m in _stale),
+    "stale-loading: Kontrastmessung erfasst den Ladehinweis (#1318, M26)": all(
+        m["hinweis_kontrast_touch"]["kontrast"].get("geprueft", 0) >= 1
+        and not m["hinweis_kontrast_touch"]["kontrast"].get("kontrast_verstoesse")
+        and not m["hinweis_kontrast_touch"]["kontrast"].get("kein_urteil")
+        for m in _stale),
     "stale-loading: nach der Antwort nicht mehr busy": all(
         m["nachher"]["ariaBusy"] == "false" and m["nachher"]["hinweis"] == "" for m in _stale),
 })
