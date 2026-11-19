@@ -38,3 +38,13 @@ test("no card styles its own button look any more", () => {
   assert.ok(!/\.controls button\s*\{/.test(css), "own .controls button rule");
   assert.ok(!/\.month button\s*\{/.test(css), "own .month button rule");
 });
+
+// #1312: Shared UI 0.5.0 puts .busch-btn after .busch-ui-action, so a BuschUI.action on a .busch-btn keeps the busch-btn
+// radius and frame. The day/month buttons only add the glyph size, padding and hover; no own radius any more.
+test("day and month buttons take radius and frame from .busch-btn (no own border-radius)", () => {
+  const css = quelle();
+  const i = css.indexOf("const LOCALTRACK_NAV_BUTTON_STYLES"), block = css.slice(i, css.indexOf("`;", i));
+  assert.ok(i >= 0 && block.includes(".busch-btn:is(.day-prev, .day-next, .prev, .next)"), "nav button rules");
+  assert.doesNotMatch(block, /border-radius/, "own radius");
+  assert.doesNotMatch(block, /border\s*:/, "own frame");
+});

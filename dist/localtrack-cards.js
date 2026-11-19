@@ -1067,13 +1067,14 @@ function showCardState(node, kind, title) {
 /* ── the card ───────────────────────────────────────────────────────────── */
 
 /* Both cards step through days or months with the shared button (M62):
-   .busch-btn for the 44 px target, focus ring and tokens, BuschUI.action
-   with variant quiet (no fill) for name and click. Own here: the glyph size
-   (a chevron, not body text) and the hover tint that HA's icon buttons have. */
+   .busch-btn for the 44 px target, radius, focus ring and tokens, BuschUI.action
+   for name and click; variant quiet has no .busch-btn variant rule, so no frame
+   and no fill (Shared UI 0.5.0 puts .busch-btn after .busch-ui-action, #1312).
+   Own here: the glyph size (a chevron, not body text), no side padding and the
+   hover tint that HA's icon buttons have. */
 const LOCALTRACK_NAV_BUTTON_STYLES = `
   .busch-btn:is(.day-prev, .day-next, .prev, .next) {
     flex: 0 0 auto; padding: 0; font-size: var(--ha-font-size-xl, 20px); line-height: 1;
-    border-radius: ${BuschUI.tokens.radiusInner};
   }
   .busch-btn:is(.day-prev, .day-next, .prev, .next):hover { background: var(--secondary-background-color, #e5e5e5); }
 `;
