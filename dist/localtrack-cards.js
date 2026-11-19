@@ -1,7 +1,7 @@
-/* BEGIN BUSCH SHARED UI 0.5.2 sha256:f7f475f717141a4253a8cce468cce0015dde2c21fe15a4a04cd6279fac5389b2 */
-/** Busch UI 0.5.2 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
+/* BEGIN BUSCH SHARED UI 0.5.3 sha256:0c02d26db175145327cecc2ee2db5a44fef850a8bb7af07c913af77f977d386f */
+/** Busch UI 0.5.3 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
-  const sourceVersion = '0.5.2';
+  const sourceVersion = '0.5.3';
   const cloneConfig = value => Array.isArray(value) ? value.map(cloneConfig)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,cloneConfig(item)])) : value;
   function configsEqual(a,b) {
@@ -149,7 +149,10 @@ const BuschUI = (() => {
   const tokens=Object.freeze({space1:'var(--ha-space-1, 4px)',space2:'var(--ha-space-2, 8px)',space3:'var(--ha-space-3, 12px)',space4:'var(--ha-space-4, 16px)',mediaRadius:'var(--ha-card-border-radius, 12px)',controlMinHeight:'44px',
     // M63: the single inner radius step and the type scale, as --busch-* hooks over the HA tokens.
     radiusInner:'var(--busch-radius-inner,var(--ha-border-radius-md,8px))',fontSizeS:'var(--busch-font-size-s,var(--ha-font-size-s,12px))',
-    fontSizeM:'var(--busch-font-size-m,var(--ha-font-size-m,14px))',fontSizeL:'var(--busch-font-size-l,var(--ha-font-size-l,16px))'});
+    fontSizeM:'var(--busch-font-size-m,var(--ha-font-size-m,14px))',fontSizeL:'var(--busch-font-size-l,var(--ha-font-size-l,16px))',
+    // #1320: focus ring colour, hook --busch-focus-color, default theme colour 60 % with the text colour (>= 3:1 on card and
+    // secondary surface, light/dark: #03a9f4 5.30/8.24 on the card, 4.21/7.88 on the secondary surface; blue alone was 2.63).
+    focusColor:'var(--busch-focus-color,color-mix(in srgb,var(--primary-color,#03a9f4) 60%,var(--primary-text-color,#212121)))'});
   function language(hass,{legacy=false,browser=true}={}) {
     const code=hass?.locale?.language||(legacy&&hass?.language)||(browser&&typeof navigator!=='undefined'&&navigator.language)||'en';
     return String(code).toLowerCase().startsWith('de')?'de':'en';
@@ -273,7 +276,7 @@ const BuschUI = (() => {
   const styles=`
 :where(.busch-btn,.busch-chip,.busch-notice,.busch-kv,.busch-state,.busch-dialog){--busch-space-1:var(--ha-space-1,4px);--busch-space-2:var(--ha-space-2,8px);--busch-space-3:var(--ha-space-3,12px);--busch-space-4:var(--ha-space-4,16px);--busch-font-size-s:var(--ha-font-size-s,12px);--busch-font-size-m:var(--ha-font-size-m,14px);--busch-font-size-l:var(--ha-font-size-l,16px);--busch-radius-inner:var(--ha-border-radius-md,8px);--busch-font-weight-medium:var(--ha-font-weight-medium,500)}
 :where(.busch-btn){display:inline-flex;align-items:center;justify-content:center;gap:var(--busch-space-2,8px);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:0 var(--busch-space-3,12px);border:1px solid transparent;border-radius:var(--busch-radius-inner,8px);background:transparent;color:var(--primary-text-color,#212121);font:inherit;font-weight:var(--busch-font-weight-medium,500);cursor:pointer}
-:where(.busch-btn):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+:where(.busch-btn):focus-visible{outline:2px solid ${tokens.focusColor};outline-offset:2px}
 :where(.busch-btn[data-variant=primary]){background:color-mix(in srgb,var(--primary-color,#03a9f4) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-btn[data-variant=secondary]){border:1px solid var(--divider-color,#e0e0e0);background:transparent;color:var(--primary-text-color,#212121)}
 :where(.busch-btn[data-variant=text]){background:transparent;color:color-mix(in srgb,var(--primary-color,#03a9f4) 60%,var(--primary-text-color,#212121))}
@@ -312,7 +315,7 @@ const BuschUI = (() => {
   // the busch-btn frame, radius and surface (all :where rules have zero specificity, so source order decides).
   const actionStyles=`
 :where(.busch-ui-action){border:0;border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-2,8px) var(--ha-space-3,12px);color:var(--primary-text-color,#212121);background:var(--secondary-background-color,#eeeeee);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
-:where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+:where(.busch-ui-action):focus-visible{outline:2px solid ${tokens.focusColor};outline-offset:2px}
 :where(.busch-ui-action[data-variant=primary]){background:color-mix(in srgb,var(--primary-color,#03a9f4) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-ui-action[data-variant=secondary]){background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
 :where(.busch-ui-action[data-variant=destructive]),:where(.busch-ui-action[data-variant=danger]){color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121))}
@@ -339,7 +342,7 @@ const BuschUI = (() => {
 :host(.busch-ui-editor),.busch-ui-editor{display:block;min-width:0;color:var(--primary-text-color,#212121);font:inherit}
 :host(.busch-ui-editor) ha-form,.busch-ui-editor ha-form{display:block;min-width:0}.busch-ui-section{min-width:0}
 .busch-ui-section>summary{cursor:pointer;min-height:44px;box-sizing:border-box;overflow-wrap:anywhere;font-weight:var(--ha-font-weight-medium,500)}
-.busch-ui-section>summary:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+.busch-ui-section>summary:focus-visible{outline:2px solid ${tokens.focusColor};outline-offset:2px}
 .busch-ui-validation{color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121));overflow-wrap:anywhere;font-size:var(--ha-font-size-s,12px)}
 `;
   return Object.freeze({sourceVersion,EditorBase,cloneConfig,configsEqual,updateConfig,updateConfigPath,deleteConfigPath,emitConfigChanged,guardEditorKeys,createEchoState,queueEcho,acceptEcho,resolveMedia,media,mayAct,statusSemantic,statusBadge,metric,formatNumber,ha,tokens,language,dictionary,fieldText,validateConfig,header,sectionHeading,action,section,stateBlock,dialogHistory,focusTrap,register,styles,cardStyles,editorStyles});
