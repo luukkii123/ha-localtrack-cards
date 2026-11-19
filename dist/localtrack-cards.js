@@ -234,8 +234,9 @@ const CARD_VERSION = "0.7.0";
 // and Playwright capture a stack trace for every console call; from the top
 // level V8 re-parses this whole file for its source positions, inside the
 // module evaluation. Deferred, what is left (line ends of the file) no longer
-// sits in the task that loads the bundle.
-setTimeout(() => console.info(
+// sits in the task that loads the bundle. The timer API is optional here: a
+// bare module host (shared-ui standalone test) has none, and then no banner.
+if (typeof setTimeout === "function") setTimeout(() => console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
   "color: white; background: #43a047; font-weight: 700;",
   "color: #43a047; background: white; font-weight: 700;"
