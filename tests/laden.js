@@ -197,9 +197,12 @@ class FakeHTMLElement extends FakeElement {
  * Loads the bundle and returns the named top-level bindings. `const` and
  * `class` do not become properties of the global object, so an expression in
  * the same scope collects them. `sprache` sets navigator.language.
+ * `realm` (from `gemeinsamerRealm()`) lets a second load share the element
+ * registry and `window.customCards` with the first, as a browser does when the
+ * module is loaded from two URLs; its `define` throws on a taken name.
  */
-function ladeKarte(namen, { sprache = "en-US" } = {}) {
-  const elements = new Map();
+function ladeKarte(namen, { sprache = "en-US", realm } = {}) {
+  const elements = realm ? realm.elements : new Map();
   const document = {
     createElement: (tag) => new FakeElement(tag),
     createElementNS: (_ns, tag) => new FakeElement(tag),
@@ -215,7 +218,8 @@ function ladeKarte(namen, { sprache = "en-US" } = {}) {
     navigator: { language: sprache, userAgent: "node", platform: "node" },
     document,
     HTMLElement: FakeHTMLElement,
-    customElements: { define: (name, type) => elements.set(name, type), get: (name) => elements.get(name) },
+    customElements: realm ? realm.customElements
+      : { define: (name, type) => elements.set(name, type), get: (name) => elements.get(name) },
     CustomEvent: class { constructor(type, options) { Object.assign(this, { type }, options); } },
     setTimeout, clearTimeout, setInterval, clearInterval,
     devicePixelRatio: 1,
@@ -225,6 +229,11 @@ function ladeKarte(namen, { sprache = "en-US" } = {}) {
   };
   kontext.window = kontext;
   kontext.self = kontext;
+  if (realm) {
+    Object.defineProperty(kontext, "customCards", {
+      get: () => realm.customCards, set: (value) => { realm.customCards = value; }, configurable: true,
+    });
+  }
   vm.createContext(kontext);
   const sammler = `\n;({ ${namen.join(", ")} });`;
   const geladen = vm.runInContext(quelle() + sammler, kontext, { filename: KARTE });
@@ -274,4 +283,25 @@ function zonenKarte({ callWS, states = zustaende(), config = {}, month } = {}) {
   return { card, hass, aufrufe, texte: k.TEXTE_LOCALTRACK_ZONE_TIME_CARD.en.texte };
 }
 
-module.exports = { ladeKarte, zonenKarte, zustaende, ruhe, offen, quelle, parseHtml, FakeElement, KARTE };
+/** One browser realm for several loads: a registry whose `define` throws
+ *  NotSupportedError on a name that is taken (as `customElements.define`
+ *  does), and one `window.customCards`. */
+function gemeinsamerRealm() {
+  const elements = new Map();
+  const realm = { elements, customCards: undefined, defines: 0 };
+  realm.customElements = {
+    define(name, type) {
+      realm.defines += 1;
+      if (elements.has(name)) {
+        const error = new Error(`the name "${name}" has already been used with this registry`);
+        error.name = "NotSupportedError";
+        throw error;
+      }
+      elements.set(name, type);
+    },
+    get: (name) => elements.get(name),
+  };
+  return realm;
+}
+
+module.exports = { ladeKarte, gemeinsamerRealm, zonenKarte, zustaende, ruhe, offen, quelle, parseHtml, FakeElement, KARTE };

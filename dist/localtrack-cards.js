@@ -2210,20 +2210,19 @@ class LocaltrackTimelineCardEditor extends LocaltrackCardEditor {
   }
 }
 
-customElements.define("localtrack-timeline-card", LocaltrackTimelineCard);
-customElements.define("localtrack-timeline-card-editor", LocaltrackTimelineCardEditor);
-
-window.customCards = window.customCards || [];
+// Double-load safe (M42): a second copy of this file (two resource URLs, a
+// cache parameter) keeps the first classes and adds no second picker entry.
 // Name und Beschreibung kommen aus dem Woerterbuch, die Sprache aus
 // navigator.language (BROWSER_LANG): dieser Eintrag entsteht beim Laden der
 // Datei, da gibt es noch kein `hass` und damit kein hass.locale.language.
-window.customCards.push({
+BuschUI.register("localtrack-timeline-card", LocaltrackTimelineCard, {
   type: "localtrack-timeline-card",
   name: TEXTE_LOCALTRACK_TIMELINE_CARD[BROWSER_LANG].name,
   description: TEXTE_LOCALTRACK_TIMELINE_CARD[BROWSER_LANG].description,
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });
+BuschUI.register("localtrack-timeline-card-editor", LocaltrackTimelineCardEditor);
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -3045,15 +3044,13 @@ class LocaltrackZoneTimeCardEditor extends LocaltrackCardEditor {
   }
 }
 
-customElements.define("localtrack-zone-time-card", LocaltrackZoneTimeCard);
-customElements.define("localtrack-zone-time-card-editor", LocaltrackZoneTimeCardEditor);
-
 // Sprache aus navigator.language (BROWSER_LANG), siehe oben: hier gibt es
-// noch kein `hass` und damit kein hass.locale.language.
-window.customCards.push({
+// noch kein `hass` und damit kein hass.locale.language. Doppelt-ladefest (M42).
+BuschUI.register("localtrack-zone-time-card", LocaltrackZoneTimeCard, {
   type: "localtrack-zone-time-card",
   name: TEXTE_LOCALTRACK_ZONE_TIME_CARD[BROWSER_LANG].name,
   description: TEXTE_LOCALTRACK_ZONE_TIME_CARD[BROWSER_LANG].description,
   preview: true,
   documentationURL: "https://github.com/luukkii123/ha-localtrack-cards",
 });
+BuschUI.register("localtrack-zone-time-card-editor", LocaltrackZoneTimeCardEditor);
