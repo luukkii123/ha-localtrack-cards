@@ -230,11 +230,16 @@ const BuschUI = (() => {
 
 const CARD_VERSION = "0.6.6";
 
-console.info(
+// Banner in a task of its own, not from the top level (#1304, M21): DevTools
+// and Playwright capture a stack trace for every console call; from the top
+// level V8 re-parses this whole file for its source positions, inside the
+// module evaluation. Deferred, what is left (line ends of the file) no longer
+// sits in the task that loads the bundle.
+setTimeout(() => console.info(
   `%c LOCALTRACK-CARDS %c v${CARD_VERSION} `,
   "color: white; background: #43a047; font-weight: 700;",
   "color: #43a047; background: white; font-weight: 700;"
-);
+), 0);
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
