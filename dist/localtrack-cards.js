@@ -1098,7 +1098,7 @@ const LOCALTRACK_SHARED_UI_STYLES = BuschUI.cardStyles + `
   /* Busch HA UI 0.1.0 — embedded in each card, no runtime dependency. */
   :host { container-type: inline-size; }
   :is(button, select, input, .segment, .leaflet-control-zoom a):focus-visible {
-    outline: 2px solid var(--primary-color, #03a9f4);
+    outline: 2px solid ${BuschUI.tokens.focusColor};
     outline-offset: 2px;
   }
 `;
