@@ -1432,11 +1432,25 @@ class LocaltrackTimelineCard extends HTMLElement {
           border: 1px solid var(--divider-color, #e0e0e0);
         }
         ha-card.stale .map { opacity: 0.4; }
-        ha-card.stale .segments, ha-card.stale .scrubber { opacity: 0.55; }
+        /* #1320: the slider itself is not dimmed, it stays operable and keeps 3:1. */
+        ha-card.stale .segments, ha-card.stale .scrub-head { opacity: 0.55; }
         /* Kartenwaehler-Vorschau (M53): gezeichneter Beispielweg statt Leaflet. */
         .map svg.preview-route { display: block; width: 100%; height: 100%; }
+        /* #1320 (WCAG 1.4.11): start and current point are the status colour 60 %
+           with the text colour, 3:1 on the card in light and dark (start
+           #43a047 6,17/7,56, was 3,30; current #ffa600 4,21/9,97, was 1,96).
+           CSS, because SVG attributes evaluate neither var() nor color-mix(). */
+        .map path.lt-start {
+          stroke: color-mix(in srgb, var(--success-color, #4caf50) 60%, var(--primary-text-color, #212121));
+          fill: color-mix(in srgb, var(--success-color, #4caf50) 60%, var(--primary-text-color, #212121));
+        }
+        .map path.lt-current { fill: color-mix(in srgb, var(--warning-color, #ffeb3b) 60%, var(--primary-text-color, #212121)); }
         /* Zeitregler (M56): Beschriftung und Wert ueber einem eigenen Schieber,
-           Schiene und Daumen in der Primaerfarbe, 44 px hohe Trefferflaeche. */
+           Schiene und Daumen in der Primaerfarbe, 44 px hohe Trefferflaeche.
+           #1320 (WCAG 1.4.11): Daumen und Fortschritt sind die Primaerfarbe 60 %
+           mit der Textfarbe (hell 5,30:1, dunkel 8,24:1; reines Blau 2,63:1),
+           die Schiene 35 % Primaerfarbe mit der Sekundaertextfarbe (4,06/5,92;
+           war 1,73/2,82), je gegen die Karte. */
         .scrubber { margin-top: var(--ha-space-2, 8px); }
         /* margin-bottom: the focus ring of the slider (outline 2px, offset 2px) must not cross the caption. */
         .scrubber .scrub-head {
@@ -1451,27 +1465,27 @@ class LocaltrackTimelineCard extends HTMLElement {
         .scrubber input[type="range"]:disabled { cursor: default; opacity: 0.5; }
         .scrubber input[type="range"]::-webkit-slider-runnable-track {
           height: 6px; border-radius: var(--ha-border-radius-pill, 9999px);
-          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--secondary-text-color, #727272));
         }
         .scrubber input[type="range"]::-webkit-slider-thumb {
           -webkit-appearance: none; appearance: none; box-sizing: border-box;
           width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
-          background: var(--primary-color, #03a9f4);
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121));
           border: 2px solid var(--card-background-color, #fff);
-          box-shadow: 0 0 0 1px var(--primary-color, #03a9f4);
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121));
         }
         .scrubber input[type="range"]::-moz-range-track {
           height: 6px; border-radius: var(--ha-border-radius-pill, 9999px);
-          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--divider-color, #e0e0e0));
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, var(--secondary-text-color, #727272));
         }
         .scrubber input[type="range"]::-moz-range-progress {
-          height: 6px; border-radius: var(--ha-border-radius-pill, 9999px); background: var(--primary-color, #03a9f4);
+          height: 6px; border-radius: var(--ha-border-radius-pill, 9999px); background: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121));
         }
         .scrubber input[type="range"]::-moz-range-thumb {
           box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%;
-          background: var(--primary-color, #03a9f4);
+          background: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121));
           border: 2px solid var(--card-background-color, #fff);
-          box-shadow: 0 0 0 1px var(--primary-color, #03a9f4);
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121));
         }
         .scrubber .scrub-label {
           flex: 0 1 auto; min-width: 0; max-width: 70%; text-align: right;
@@ -1903,10 +1917,11 @@ class LocaltrackTimelineCard extends HTMLElement {
     const routeColor = farbe("--error-color", "#e53935");
     const startColor = farbe("--success-color", "#4caf50");
 
-    this._polyline = L.polyline(latLngs, { color: routeColor, weight: 4, opacity: 0.85 }).addTo(this._map);
+    // #1320: opaque, so the route keeps the error colour's 3:1 on the card (4.29/3.97; at 0.85 3.51/3.19).
+    this._polyline = L.polyline(latLngs, { color: routeColor, weight: 4, opacity: 1 }).addTo(this._map);
 
     if (latLngs.length > 1) {
-      L.circleMarker(latLngs[0], { radius: 5, color: startColor, fillColor: startColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
+      L.circleMarker(latLngs[0], { radius: 5, color: startColor, fillColor: startColor, fillOpacity: 1, weight: 2, className: "lt-start" }).addTo(this._markerLayer);
       this._endMarker = L.circleMarker(latLngs[latLngs.length - 1], { radius: 5, color: routeColor, fillColor: routeColor, fillOpacity: 1, weight: 2 }).addTo(this._markerLayer);
     }
 
@@ -1934,7 +1949,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       const point = this._points[stays[i].startIndex];
       // Fill (M26, E6): primary mixed 65 % with the primary text colour, darker
       // in a light theme (white number 4.8:1 instead of 2.6:1), lighter in a
-      // dark one (dark number 7.6:1). Pure primary stays the route and slider.
+      // dark one (dark number 7.6:1); the slider is mixed the same way (#1320).
       // `interactive: false` ist Absicht und nicht Kosmetik: die Nadel ist
       // eine Beschriftung der Landkarte, kein Bedienelement. Ohne das faengt
       // sie Klicks ab, die dem Verschieben der Karte gelten — und zwei
@@ -1968,7 +1983,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       const fuellung = (getComputedStyle(this).getPropertyValue("--warning-color") || "").trim();
       this._currentMarker = L.circleMarker([point.lat, point.lon], {
         radius: 6, color: rand || "#000", fillColor: fuellung || "#ffeb3b",
-        fillOpacity: 1, weight: 2,
+        fillOpacity: 1, weight: 2, className: "lt-current",
       }).addTo(this._markerLayer);
     } else {
       this._currentMarker.setLatLng([point.lat, point.lon]);
@@ -2152,7 +2167,7 @@ class LocaltrackTimelineCard extends HTMLElement {
       dot.setAttribute("cx", String(x));
       dot.setAttribute("cy", String(y));
       dot.setAttribute("r", "1.6");
-      dot.style.fill = "var(--primary-color, #03a9f4)";
+      dot.style.fill = "color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121))";
       svg.appendChild(dot);
     }
     this._mapEl.replaceChildren(svg);
@@ -2505,7 +2520,8 @@ const ZONE_TIME_STYLES = `
      Deaktiviert-Farbe (1,9:1 bzw. 3,4:1); leer zeigt der Gedankenstrich. */
   tr.empty td { color: var(--secondary-text-color, #727272); }
   tr.today td { font-weight: var(--ha-font-weight-bold, 700); }
-  .fill { height: 8px; border-radius: var(--ha-border-radius-pill, 9999px); background: var(--primary-color, #03a9f4); min-width: 2px; }
+  /* #1320 (WCAG 1.4.11): the bar is the primary colour 60 % with the text colour, 5,30/8,24:1 on the card (was 2,63 light). */
+  .fill { height: 8px; border-radius: var(--ha-border-radius-pill, 9999px); background: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121)); min-width: 2px; }
   tfoot td { border-top: 2px solid var(--divider-color, #e0e0e0);
              font-weight: var(--ha-font-weight-medium, 600); padding-top: ${BuschUI.tokens.space2}; }
   /* mehrzeilig: overflow-wrap: anywhere, damit ein langes Wort umbricht

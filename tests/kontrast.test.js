@@ -106,3 +106,47 @@ for (const punkt of [".segment.stay .dot", ".segment.move .dot"]) {
     });
   }
 }
+
+// #1320 (Etappe I, Kontrast-Rest, user decision: no exception for graphics): every operated part of the time slider
+// (thumb, track, Firefox progress) and every information-carrying map graphic of the card's own (start, end and current
+// point, preview route and stay dots, zone-time bar) reaches 3:1 on the card surface in light and dark (WCAG 1.4.11).
+// The map tiles are not ours: the lines are measured by their own colour against the card, not against a tile.
+const GRAFIK_THEMEN = {
+  light: { ...SYMBOL_THEMEN.light, "--error-color": "#db4437", "--warning-color": "#ffa600" },
+  dark: { ...SYMBOL_THEMEN.dark, "--error-color": "#db4437", "--warning-color": "#ffa600" },
+};
+const R = '.scrubber input[type="range"]';
+/** Inline value assigned in the card code, e.g. `route.style.stroke = "…"`. */
+function zuweisung(ziel) {
+  const m = KARTE.match(new RegExp(ziel.replace(/[.]/g, "\\.") + ' = "([^"]+)"'));
+  assert.ok(m, ziel);
+  return m[1];
+}
+const GRAFIK = [
+  ["slider thumb (WebKit)", () => regel(`${R}::-webkit-slider-thumb`, "background")],
+  ["slider thumb (Firefox)", () => regel(`${R}::-moz-range-thumb`, "background")],
+  ["slider track (WebKit)", () => regel(`${R}::-webkit-slider-runnable-track`, "background")],
+  ["slider track (Firefox)", () => regel(`${R}::-moz-range-track`, "background")],
+  ["slider progress (Firefox)", () => regel(`${R}::-moz-range-progress`, "background")],
+  ["map start point", () => regel(".map path.lt-start", "fill")],
+  ["map current point", () => regel(".map path.lt-current", "fill")],
+  ["map route and end point", () => "var(--error-color, #e53935)"],
+  ["preview route", () => zuweisung("route.style.stroke")],
+  ["preview stay dot", () => zuweisung("dot.style.fill")],
+  ["zone time bar", () => regel(".fill", "background")],
+];
+for (const [name, vorne] of GRAFIK) {
+  for (const [thema, werte] of Object.entries(GRAFIK_THEMEN)) {
+    test(`#1320 ${name}: at least 3:1 on the card (${thema})`, () => {
+      const wert = kontrast(farbe(vorne(), werte), farbe("var(--card-background-color)", werte));
+      assert.ok(wert >= 3, `${wert.toFixed(2)}:1`);
+    });
+  }
+}
+test("#1320 the drawn route is opaque and the map points carry their class, the stale state does not dim the slider", () => {
+  assert.match(KARTE, /L\.polyline\(latLngs, \{ color: routeColor, weight: 4, opacity: 1 \}\)/);
+  assert.match(KARTE, /L\.circleMarker\(latLngs\[0\], \{[^}]*className: "lt-start"/);
+  assert.match(KARTE, /this\._currentMarker = L\.circleMarker\(\[point\.lat, point\.lon\], \{[^}]*className: "lt-current"/);
+  assert.doesNotMatch(KARTE, /ha-card\.stale \.scrubber\s*[,{]/, "the slider keeps its contrast while old content is shown");
+  assert.equal(regel("ha-card.stale .segments, ha-card.stale .scrub-head", "opacity"), "0.55");
+});
