@@ -16,6 +16,8 @@ import shutil
 import sys
 import tempfile
 import threading
+import struct
+import zlib
 
 from playwright.sync_api import sync_playwright
 
@@ -104,6 +106,62 @@ def card_measure(page, tag, title_selector, control_selector, action_selectors):
     values["textIssues"] = {key: len(measured[key]) for key in
                              ("ueberlauf", "ausserhalb", "ueberlappung")}
     return values
+
+
+def png_pixels(data):
+    """Decode an 8-bit RGB/RGBA PNG (Playwright screenshot) into rows of RGB tuples."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    pos, idat = 8, b""
+    while pos < len(data):
+        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + length]
+        if kind == b"IHDR":
+            width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", body)
+            assert depth == 8 and colour in (2, 6) and interlace == 0, "unsupported PNG"
+        elif kind == b"IDAT":
+            idat += body
+        pos += 12 + length
+    step = 3 if colour == 2 else 4
+    raw, stride, rows, prev = zlib.decompress(idat), width * step, [], bytearray(width * step)
+    for y in range(height):
+        kind, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for i in range(stride):
+            left = line[i - step] if i >= step else 0
+            up, corner = prev[i], prev[i - step] if i >= step else 0
+            if kind == 1:
+                line[i] = (line[i] + left) & 255
+            elif kind == 2:
+                line[i] = (line[i] + up) & 255
+            elif kind == 3:
+                line[i] = (line[i] + (left + up) // 2) & 255
+            elif kind == 4:
+                pa, pb, pc = abs(up - corner), abs(left - corner), abs(left + up - 2 * corner)
+                line[i] = (line[i] + (left if pa <= pb and pa <= pc else up if pb <= pc else corner)) & 255
+        rows.append([tuple(line[x * step:x * step + 3]) for x in range(width)])
+        prev = line
+    return rows
+
+
+def map_corner_frame(page, size=16, tolerance=3):
+    """#1318 image review: the map box in an empty/loading/error state shows no
+    corner arcs. Every pixel in the four corner squares of `.map-wrap` must
+    equal the surface of the state box (sampled at the top middle); the
+    anti-aliased arcs of a painted map underneath differed by 44 (light) and
+    72 (dark) levels in the run of 2026-11-19. Returns the worst deviation."""
+    shot = page.locator("localtrack-timeline-card").locator(".map-wrap").screenshot()
+    rows = png_pixels(shot)
+    height, width = len(rows), len(rows[0])
+    surface = rows[4][width // 2]
+    worst = {"abweichung": 0, "x": None, "y": None, "flaeche": surface}
+    for ys in (range(size), range(height - size, height)):
+        for xs in (range(size), range(width - size, width)):
+            for y in ys:
+                for x in xs:
+                    deviation = max(abs(a - b) for a, b in zip(rows[y][x], surface))
+                    if deviation > worst["abweichung"]:
+                        worst.update(abweichung=deviation, x=x, y=y, pixel=rows[y][x])
+    worst["bestanden"] = worst["abweichung"] <= tolerance
+    return worst
 
 
 def editor_fixture(page, tag):
@@ -294,6 +352,13 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                                   ("ueberlauf", "ausserhalb", "ueberlappung")}
                         if any(issues.values()):
                             report["failures"].append(f"{label}-{state}: visible text {issues}")
+                        if name == "timeline":
+                            # #1318: no second frame (corner arcs) around the state box.
+                            corners = map_corner_frame(page)
+                            report["cases"][-1].setdefault("mapCorners", {})[state] = corners
+                            if not corners["bestanden"]:
+                                report["failures"].append(
+                                    f"{label}-{state}: map corners show a second frame {corners}")
                         if width == 320:
                             page.locator(tag).screenshot(
                                 path=str(OUT / f"{label}-{state}.png"))

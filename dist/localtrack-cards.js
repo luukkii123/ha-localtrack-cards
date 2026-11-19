@@ -1396,6 +1396,13 @@ class LocaltrackTimelineCard extends HTMLElement {
            (Regel 1, Pruefung 3: zwei Textelemente duerfen sich nicht
            schneiden). Gemessen gefunden, nicht vermutet. */
         .map-wrap.busy .leaflet-control-container { visibility: hidden; }
+        /* Ohne alten Inhalt (laden, leer, Fehler) wird die Landkarte unter der
+           deckenden Box gar nicht gemalt: Box und Landkarte werden an denselben
+           runden Ecken beschnitten, und deren Kantenglaettung liess die
+           Kartenflaeche (Leaflet #ddd) als Eckbogen durch die Box scheinen —
+           ein zweiter Rahmen um den Zustand (Bildpruefung #1318, gemessen in
+           shared_ui_contract.py an den Eckpixeln). */
+        ha-card:not(.stale) .map-wrap.busy .map { visibility: hidden; }
         /* Laedt mit altem Inhalt (#1304, M51): der bisherige Tag bleibt
            gedimmt stehen, der Ladehinweis liegt durchscheinend darueber.
            Kein Leeren, kein Layoutsprung. */
