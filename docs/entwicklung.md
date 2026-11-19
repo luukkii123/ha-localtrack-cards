@@ -128,6 +128,8 @@ Sprache der Browseroberfläche).
 
 ## Geprüft
 
+**20.11.2026 · 0.10.0, Buschcheck Etappe I (#1325, Tag `v0.10.0`)** — Kopfkommentar mit Test (M73), Regler/Weg/Punkte ≥ 3:1, Fokus-Token, Shared UI 0.5.3, CI aus der Vorlage (M45). 169 Node-Tests. Abschlusslauf `karten-20261119-234243-239269` grün (57/57, Volllauf, 2700 Node-Tests, Block `statisch` grün inkl. CI-Vorlage und Zeilenlänge), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
+
 **19.11.2026 · 0.9.0, Buschcheck Etappe H (#1318, Tag `v0.9.0`)** — Shared UI 0.5.0: Zustandsbaustein mit Live-Region (M27), `.busch-btn` (M62), Tokens und 12-px-Radius-Rückfall (M63), Kopf Stufe 1 (M61), `BuschUI.register` (M42), Kontrast/Touch (M26); Zustände ohne doppelten Rahmen, Ladehinweis als Box oben. M28 entfällt (keine Dialoge). 139 Node-Tests. Abschlusslauf `karten-20261119-195834-aaec84` grün (55/55, 2590 Node-Tests, Block `statisch` grün, Kontrast/Touch gemessen), `--beleg-pruefen` gleich; Bilder zweimal am Bild geprüft (Sonnet), Befunde behoben.
 
 **19.11.2026 · 0.8.0, Buschcheck Etappe G (#1309, Tag `v0.8.0`)** — Zeitleiste benennt ihre Bedienelemente (aria-valuetext, Zeilen-Labels, lang aus hass.locale), eigener beschrifteter Schieber „Uhrzeit“ mit 44-px-Ziel, Tag ‹ › (M56). 110 Node-Tests. Abschlusslauf `karten-20261119-141846-b2547c` grün (43/43, 948 Node-Tests, Block `statisch` grün), `--beleg-pruefen` gleich; Bilder zweimal am Bild geprüft (Sonnet), Mängel bei 320 px behoben, sonst Rauschen.
