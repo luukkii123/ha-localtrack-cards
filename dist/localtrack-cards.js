@@ -1,4 +1,4 @@
-/* BEGIN BUSCH SHARED UI 0.5.0 sha256:b98d07520b42944ecc6733d5a9c5645e0c6b7ed2faf103af512353d31dd4f39d */
+/* BEGIN BUSCH SHARED UI 0.5.0 sha256:957791170679e3d04862942a665504dbdc622f3dc3fb8a62e9c32fdcbb27e90b */
 /** Busch UI 0.5.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
   const sourceVersion = '0.5.0';
@@ -300,7 +300,7 @@ const BuschUI = (() => {
 :where(.busch-dialog-content){flex:1 1 auto;min-height:0;overflow:auto;padding:0 var(--busch-space-4,16px);overflow-wrap:anywhere}
 :where(.busch-dialog-foot){display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--busch-space-2,8px);padding:var(--busch-space-3,12px) var(--busch-space-4,16px)}
 :where(.busch-dialog-foot) :where(.busch-btn){text-transform:none}
-:where(.busch-dialog-foot) :where([data-variant=destructive]){margin-inline-end:auto}
+:where(.busch-dialog-foot) :where([data-variant=destructive]:not(:last-child)){margin-inline-end:auto}
 @media (max-width:449px),(max-height:499px){:where(.busch-dialog){width:100%;max-width:none;min-height:90vh;max-height:100vh;border-radius:var(--ha-card-border-radius,12px) var(--ha-card-border-radius,12px) 0 0}:where(.busch-dialog-foot){margin-top:auto}}
 `;
   // Scoped bases: family layout/grid/padding and domain presentation override
@@ -316,6 +316,8 @@ const BuschUI = (() => {
 :where(.busch-ui-action[data-variant=quiet]),:where(.busch-ui-action[data-variant=icon-only]),:where(.busch-ui-action[data-variant=overflow]){background:transparent}
 :where(.busch-ui-action):disabled{cursor:default;opacity:0.5}
 `;
+  // M26/E6: error and offline state icons mix the status colour 70 % with the text colour like the destructive text:
+  // error 6.56/5.46:1, offline 3.42/9.60:1 on the card (light/dark render themes).
   const cardStyles=actionStyles+styles+`
 .busch-ui-header{min-width:0}.busch-ui-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :where(.busch-ui-title[data-level="1"]){font-size:var(--ha-card-header-font-size,var(--ha-font-size-2xl,24px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121)}
@@ -323,7 +325,7 @@ const BuschUI = (() => {
 :where(.busch-ui-heading2){margin:0;font-size:var(--busch-font-size-m,var(--ha-font-size-m,14px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121);text-transform:none;letter-spacing:normal;overflow-wrap:anywhere}
 .busch-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ha-space-2,8px);padding:var(--ha-space-4,16px);text-align:center;min-width:0;box-sizing:border-box;color:var(--primary-text-color,#212121)}
 .busch-state-icon{--mdc-icon-size:24px;color:var(--secondary-text-color,#727272)}
-.busch-state[data-kind=error] .busch-state-icon{color:var(--error-color,#db4437)}.busch-state[data-kind=offline] .busch-state-icon{color:var(--warning-color,#ffa600)}
+.busch-state[data-kind=error] .busch-state-icon{color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121))}.busch-state[data-kind=offline] .busch-state-icon{color:color-mix(in srgb,var(--warning-color,#ffa600) 70%,var(--primary-text-color,#212121))}
 .busch-state-text{display:flex;flex-direction:column;gap:var(--ha-space-1,4px);min-width:0;max-width:100%}
 .busch-state-title{font-weight:var(--ha-font-weight-medium,500);overflow-wrap:anywhere}
 .busch-state-hint{color:var(--secondary-text-color,#727272);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}
