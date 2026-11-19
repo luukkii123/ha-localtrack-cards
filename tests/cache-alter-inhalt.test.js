@@ -110,6 +110,25 @@ test("timeline: a failed load under old content clears it and shows the error", 
   assert.match(card._overlayEl.textContent, /kaputt/);
 });
 
+test("timeline: a truly empty new day removes the old day and shows the empty state", async () => {
+  // M51 keeps old content only WHILE loading; an empty answer must not leave it standing.
+  const { card, clock, ha, waehle } = await timeline();
+  await waehle("2027-01-14");
+  assert.ok(card._segmentsEl.childElementCount > 0, "old day has rows");
+  assert.ok(card._scrubLabelEl.textContent.trim(), "old day has a scrubber label");
+  ha.respond("localtrack/history", { points: [], total: 0, simplified: false });
+  await waehle("2027-01-12");
+  await clock.advance(0);
+  await ruhe();
+  assert.equal(card._segmentsEl.childElementCount, 0, "no rows of the old day");
+  assert.equal(card._scrubLabelEl.textContent.trim(), "", "no scrubber label of the old day");
+  assert.equal(card._scrubberEl.closest(".scrubber").style.display, "none", "scrubber hidden");
+  assert.equal(card._scrubberEl.disabled, true);
+  assert.ok(!card._cardEl.classList.contains("stale"));
+  assert.equal(card._segmentsEl.getAttribute("aria-busy"), "false");
+  assert.equal(card._overlayEl.textContent, card._t.keine_punkte);
+});
+
 test("cache keeps at most 24 finished periods (LRU)", async () => {
   const { card, waehle, tage } = await timeline();
   const day = (n) => `2026-12-${String(n).padStart(2, "0")}`;

@@ -1393,6 +1393,9 @@ class LocaltrackTimelineCard extends HTMLElement {
       }
       this._scrubberEl.closest(".scrubber").style.display =
         this._points.length && this._config.show_scrubber !== false ? "" : "none";
+      // A truly empty day removes what the old day left (M51 keeps it only
+      // while loading): `_renderTrack` returns before the scrubber label.
+      if (!this._points.length) this._clearDayDetails();
       this._segmentState = segmentTrack(
         this._points,
         Number(this._config.stay_radius_m) || 150,
