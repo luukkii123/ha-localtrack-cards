@@ -1,0 +1,8 @@
+# Generated from hacs/scripts/ci-vorlage/dependabot.yml (M45, S8): keeps the SHA-pinned actions current.
+# A Dependabot pull request is applied to the template first, then copied to all five card repos.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

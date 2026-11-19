@@ -1,0 +1,6 @@
+# Browser contracts for the CI job `contracts` (hacs M45/D12), run by .github/workflows/validate.yml with
+# --network none in the pinned Playwright image. Only repo scripts without private data and without network.
+# One script per line, relative to the repo root; {bundle} = dist/<bundle>.js, {out} = a fresh output folder.
+# Not listed: render.py, zonetime.py, shared_ui_contract.py (need hacs/docs/render/regeln.py).
+docs/render/editor_contract.py {bundle}
+docs/render/zindex.py {bundle} {out}

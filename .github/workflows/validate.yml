@@ -1,5 +1,8 @@
 name: Validate
 
+# Generated from hacs/scripts/ci-vorlage/validate.yml (M45); only the bundle name differs per repo.
+# Change the template and copy it to all five card repos; scripts/ci-vorlage-pruefen.py checks that.
+
 on:
   workflow_call:
   push:
@@ -17,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
         with:
           category: plugin
@@ -26,19 +31,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Syntax
         run: for f in dist/*.js; do node --check "$f"; done
-      - name: Shared UI block matches its hash
+      - name: Shared blocks match their hash
         run: |
           python3 - <<'PY'
           import hashlib,pathlib,re,sys
+          bad=False
           for p in sorted(pathlib.Path('dist').glob('*.js')):
-            m=re.search(r'/\* BEGIN BUSCH SHARED UI \S+ sha256:([0-9a-f]{64}) \*/\n(.*?)/\* END BUSCH SHARED UI \*/',p.read_text(),re.S)
-            if not m: print(p,'kein Shared-UI-Block');continue
-            ok=hashlib.sha256(m[2].encode()).hexdigest()==m[1]; print(p,'ok' if ok else 'ABWEICHUNG'); ok or sys.exit(1)
+            text=p.read_text();names=re.findall(r'/\* BEGIN BUSCH SHARED (\w+) ',text)
+            if not names: print(p,'kein Shared-Block');continue
+            for n in sorted(set(names)):
+              blocks=re.findall(r'/\* BEGIN BUSCH SHARED '+n+r' (\S+) sha256:([0-9a-f]{64}) \*/\n(.*?)/\* END BUSCH SHARED '+n+r' \*/',text,re.S)
+              ok=len(blocks)==1==names.count(n)==text.count('/* END BUSCH SHARED '+n+' */')
+              if ok:
+                ver,digest,body=blocks[0]
+                # Optional generated first line: const BUSCH_<NAME>_STAMP with version and hash prefix.
+                stamp=re.match(r'const BUSCH_'+n+r'_STAMP = Object\.freeze\(\{ version: "([^"]+)", sourceHash: "([0-9a-f]{12})" \}\);\n',body)
+                if stamp: ok=stamp[1]==ver and stamp[2]==digest[:12];body=body[stamp.end():]
+                ok=ok and hashlib.sha256(body.encode()).hexdigest()==digest
+              print(p,n,'ok' if ok else 'ABWEICHUNG');bad|=not ok
+          sys.exit(1 if bad else 0)
+          PY
+      - name: Testkit matches its hash
+        run: |
+          python3 - <<'PY'
+          # tests/_testkit.cjs is a whole-file copy of hacs shared-ui/testkit.cjs (M5): one header line
+          # with version and sha256 of the rest, written by scripts/sync-shared-ui.py. A local edit fails here.
+          import hashlib,pathlib,re,sys
+          p=pathlib.Path('tests/_testkit.cjs')
+          if not p.exists(): print(p,'fehlt');sys.exit(1)
+          head,_,body=p.read_text(encoding='utf-8').partition('\n')
+          m=re.fullmatch(r'// BUSCH SHARED TESTKIT (\S+) sha256:([0-9a-f]{64}) generated from shared-ui/testkit\.cjs by scripts/sync-shared-ui\.py; edit the source, not this copy',head)
+          v=re.search(r"const TESTKIT_VERSION = '([^']+)'",body)
+          ok=bool(m and v) and v[1]==m[1] and hashlib.sha256(body.encode()).hexdigest()==m[2]
+          print(p,'TESTKIT',m[1] if m else '-','ok' if ok else 'ABWEICHUNG');sys.exit(0 if ok else 1)
           PY
       - name: Sinks
         run: |
@@ -191,6 +223,7 @@ jobs:
         run: |
           python3 - <<'PY'
           # sha256 over the bytes between the BEGIN line and the END line, i.e. upstream as embedded.
+          # A repo without vendor code has no marker at all; its presence is a node test where it exists.
           import hashlib,pathlib,re,sys
           bad=False;found=0
           for p in sorted(pathlib.Path('dist').glob('*.js')):
@@ -200,8 +233,48 @@ jobs:
             for name,ver,digest,body in blocks:
               found+=1;ok=hashlib.sha256(body).hexdigest()==digest.decode()
               print('vendor',name.decode(),'ok' if ok else 'ABWEICHUNG '+ver.decode()+' '+str(p));bad|=not ok
-          if not found: print('vendor kein Block');bad=True
+          if not found: print('vendor: kein Block in diesem Repo')
           sys.exit(1 if bad else 0)
           PY
       - name: Tests
         run: if ls tests/*.test.js >/dev/null 2>&1; then node --test tests/*.test.js; else echo "no tests"; fi
+
+  contracts:
+    # Browser contracts (D12): only the repo's own render scripts listed in .github/ci-contracts.txt, which
+    # need neither private data nor network. Same Playwright as hacs/scripts/karten-runner.json; the scripts
+    # run with --network none, so a script that reaches out fails instead of silently passing.
+    name: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      PLAYWRIGHT_PIP: playwright==1.62.0
+      BUNDLE: dist/localtrack-cards.js
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Pinned Playwright
+        # Same install as hacs/scripts/karten-alle.sh, then frozen into a local image for the offline run.
+        run: |
+          docker pull "$PLAYWRIGHT_IMAGE"
+          docker run --name ci-playwright "$PLAYWRIGHT_IMAGE" \
+            python3 -m pip install --quiet --no-cache-dir --break-system-packages "$PLAYWRIGHT_PIP"
+          docker commit ci-playwright ci-playwright:pinned
+          docker rm ci-playwright
+      - name: Contracts without network
+        run: |
+          docker run --rm -i --network none -v "$GITHUB_WORKSPACE:/w" -e BUNDLE -w /w ci-playwright:pinned bash -s <<'SH'
+          set -u
+          fail=0; n=0
+          while read -r script args; do
+            case "$script" in ''|'#'*) continue ;; esac
+            n=$((n + 1)); out="/w/.ci-out/$n"; mkdir -p "$out"
+            args="${args//\{bundle\}/$BUNDLE}"; args="${args//\{out\}/$out}"
+            echo "::group::$script $args"
+            if timeout 600 python3 "$script" $args </dev/null; then echo "ok: $script"; else echo "::error::contract failed: $script"; fail=1; fi
+            echo "::endgroup::"
+          done < .github/ci-contracts.txt
+          if [ "$n" -eq 0 ]; then echo "::error::.github/ci-contracts.txt lists no contract"; exit 1; fi
+          exit "$fail"
+          SH
