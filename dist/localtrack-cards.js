@@ -1059,6 +1059,17 @@ function showCardState(node, kind, title) {
 
 /* ── the card ───────────────────────────────────────────────────────────── */
 
+/* Both cards step through days or months with the shared button (M62):
+   .busch-btn for the 44 px target, focus ring and tokens, BuschUI.action
+   with variant quiet (no fill) for name and click. Own here: the glyph size
+   (a chevron, not body text) and the hover tint that HA's icon buttons have. */
+const LOCALTRACK_NAV_BUTTON_STYLES = `
+  .busch-btn:is(.day-prev, .day-next, .prev, .next) {
+    flex: 0 0 auto; padding: 0; font-size: var(--ha-font-size-xl, 20px); line-height: 1;
+  }
+  .busch-btn:is(.day-prev, .day-next, .prev, .next):hover { background: var(--secondary-background-color, #e5e5e5); }
+`;
+
 const LOCALTRACK_SHARED_UI_STYLES = BuschUI.cardStyles + `
   /* Busch HA UI 0.1.0 — embedded in each card, no runtime dependency. */
   :host { container-type: inline-size; }
@@ -1335,15 +1346,9 @@ class LocaltrackTimelineCard extends HTMLElement {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .controls .day-name { margin-inline-end: var(--ha-space-1, 4px); }
-        /* Wie die Monatsknoepfe der Verweildauer-Karte (R01): 44 px, Zeichen. */
-        .controls button {
-          display: inline-flex; align-items: center; justify-content: center;
-          box-sizing: border-box; width: 44px; min-height: 44px; padding: 0;
-          border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
-          border-radius: var(--ha-card-border-radius, 8px);
-          color: var(--primary-text-color); flex: 0 0 auto;
-        }
-        .controls button:hover { background: var(--secondary-background-color, #e5e5e5); }
+        /* Tag vor/zurueck: BuschUI-Knopf (M62), wie die Monatsknoepfe der
+           Verweildauer-Karte; eigen ist nur die Zeichengroesse und das Hover. */
+        ${LOCALTRACK_NAV_BUTTON_STYLES}
         .controls input[type="date"] {
           flex: 0 1 auto; min-width: 0;
           box-sizing: border-box; min-height: 44px;
@@ -1465,9 +1470,9 @@ class LocaltrackTimelineCard extends HTMLElement {
           <div class="title"></div>
           <div class="controls">
             <label class="day-name" for="lt-day"></label>
-            <button type="button" class="day-prev">‹</button>
+            <button type="button" class="busch-btn day-prev">‹</button>
             <input type="date" id="lt-day">
-            <button type="button" class="day-next">›</button>
+            <button type="button" class="busch-btn day-next">›</button>
           </div>
         </div>
         <div class="map-wrap">
@@ -1507,9 +1512,9 @@ class LocaltrackTimelineCard extends HTMLElement {
 
     // Named here, before the first `hass` (M56); `_applyTexts` follows the language.
     BuschUI.action({ node: this.shadowRoot.querySelector(".day-prev"), label: this._t.voriger_tag,
-      onClick: () => this._shiftDay(-1) });
+      variant: "quiet", onClick: () => this._shiftDay(-1) });
     BuschUI.action({ node: this.shadowRoot.querySelector(".day-next"), label: this._t.naechster_tag,
-      onClick: () => this._shiftDay(1) });
+      variant: "quiet", onClick: () => this._shiftDay(1) });
 
     const config = this._config || {};
     this._syncTitle();
@@ -2408,14 +2413,8 @@ const ZONE_TIME_STYLES = `
     gap: var(--ha-space-3, 12px); width: 100%; max-width: 440px;
     margin-inline: auto;
   }
-  .month button {
-    display: inline-flex; align-items: center; justify-content: center;
-    box-sizing: border-box; width: 44px; min-height: 44px;
-    border: none; background: none; cursor: pointer; font-size: 1.2em; line-height: 1;
-    border-radius: var(--ha-card-border-radius, 8px);
-    color: var(--primary-text-color); flex: 0 0 auto;
-  }
-  .month button:hover { background: var(--secondary-background-color, #e5e5e5); }
+  /* Monat vor/zurueck: BuschUI-Knopf (M62), siehe LOCALTRACK_NAV_BUTTON_STYLES. */
+  ${LOCALTRACK_NAV_BUTTON_STYLES}
   .month .label {
     flex: 1 1 auto; min-width: 0; text-align: center;
     font-weight: var(--ha-font-weight-medium, 600);
@@ -2627,9 +2626,9 @@ class LocaltrackZoneTimeCard extends HTMLElement {
             <select class="pick-zone"></select>
           </div>
           <div class="month">
-            <button type="button" class="prev">‹</button>
+            <button type="button" class="busch-btn prev">‹</button>
             <span class="label"></span>
-            <button type="button" class="next">›</button>
+            <button type="button" class="busch-btn next">›</button>
           </div>
         </div>
         <div class="status" role="status" aria-live="polite"></div>
@@ -2663,8 +2662,8 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     this._titleText = null;
     this._pickerRefs = null;
 
-    BuschUI.action({node:root.querySelector(".prev"),label:this._t.voriger_monat,onClick:() => this._shiftMonth(-1)});
-    BuschUI.action({node:root.querySelector(".next"),label:this._t.naechster_monat,onClick:() => this._shiftMonth(1)});
+    BuschUI.action({node:root.querySelector(".prev"),label:this._t.voriger_monat,variant:"quiet",onClick:() => this._shiftMonth(-1)});
+    BuschUI.action({node:root.querySelector(".next"),label:this._t.naechster_monat,variant:"quiet",onClick:() => this._shiftMonth(1)});
     this._entityEl.addEventListener("change", () => {
       this._entity = this._entityEl.value;
       this._load();
