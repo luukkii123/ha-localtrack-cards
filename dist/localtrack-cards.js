@@ -1332,10 +1332,9 @@ class LocaltrackTimelineCard extends HTMLElement {
           gap: var(--ha-space-2, 8px); margin-bottom: var(--ha-space-2, 8px);
         }
         /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. min-width: 0
-           ist im Flex-Kind Pflicht, sonst waechst es ueber den Elternteil. */
+           ist im Flex-Kind Pflicht, sonst waechst es ueber den Elternteil.
+           Groesse, Gewicht und Farbe kommen aus BuschUI.header level 1 (M61). */
         .title {
-          font-size: var(--ha-font-size-l, 1.1em); font-weight: var(--ha-font-weight-medium, 600);
-          color: var(--primary-text-color);
           flex: 1 1 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -1774,7 +1773,8 @@ class LocaltrackTimelineCard extends HTMLElement {
     if (text === this._titleText) return;
     this._titleText = text;
     this._titleEl.textContent = text;
-    BuschUI.header({node:this.shadowRoot.querySelector(".header"),titleNode:this._titleEl});
+    // Level 1: the HA card header step, the same title in every family (M61).
+    BuschUI.header({node:this.shadowRoot.querySelector(".header"),titleNode:this._titleEl,level:1});
   }
 
   _errorMessage(error) {
@@ -2395,10 +2395,10 @@ const ZONE_TIME_STYLES = `
      eigener .card-content. ha-card ist ein Kind dieses Shadow-Roots. */
   ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
   .head { display: flex; flex-direction: column; gap: var(--ha-space-2, 8px); margin-bottom: ${BuschUI.tokens.space3}; }
-  /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. */
+  /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. Groesse, Gewicht
+     und Farbe aus BuschUI.header level 1 (M61). */
   .title {
-    font-size: var(--ha-font-size-l, 1.1em); font-weight: var(--ha-font-weight-medium, 600);
-    color: var(--primary-text-color); min-width: 0;
+    min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .pickers { display: flex; gap: var(--ha-space-2, 8px); flex-wrap: wrap; }
@@ -2717,7 +2717,7 @@ class LocaltrackZoneTimeCard extends HTMLElement {
     if (text === this._titleText) return;
     this._titleText = text;
     this._titleEl.textContent = text;
-    BuschUI.header({node:this.shadowRoot.querySelector(".head"),titleNode:this._titleEl});
+    BuschUI.header({node:this.shadowRoot.querySelector(".head"),titleNode:this._titleEl,level:1});
   }
 
   _shiftMonth(delta) {

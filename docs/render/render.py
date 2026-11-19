@@ -715,6 +715,24 @@ try:
             vor_messung=voll_breit,
         )
 
+        # ── Kartenkopf (M61): Titel bei 480 px hell und dunkel gleich ──────
+        # BuschUI.header level 1: --ha-card-header-font-size (im Harness nicht
+        # gesetzt, Rueckfall 24 px), Gewicht medium (500), Primaertextfarbe.
+        def kopf(p):
+            thema = p.evaluate("() => document.documentElement.dataset.theme")
+            werte = p.evaluate("""(tag) => {
+            const t = document.querySelector(tag).shadowRoot.querySelector('.title');
+            const cs = getComputedStyle(t);
+            return { groesse: cs.fontSize, gewicht: cs.fontWeight, farbe: cs.color,
+                     textfarbe: getComputedStyle(document.documentElement).getPropertyValue('--primary-text-color').trim(),
+                     stufe: t.getAttribute('data-level'), rolle: t.getAttribute('role') };
+        }""", "localtrack-timeline-card")
+            werte["bild"] = "timeline-480-%s.png" % thema
+            p.locator("localtrack-timeline-card").screenshot(path=str(OUT / werte["bild"]))
+            return werte
+
+        kartenkopf = lauf_breiten(page, breiten=(480,), messung=kopf, vor_messung=voll_breit)
+
         # ── Regel 1 im Fehlerzustand ───────────────────────────────────────
         # Im Normallauf steht die Lade- und Fehlerbox auf display:none und
         # bliebe damit ungemessen — ausgerechnet sie traegt aber den laengsten
@@ -890,6 +908,7 @@ report = {
     "picker_preview": picker,
     "stale_loading": stale,
     "schieber": schieber,
+    "kartenkopf": kartenkopf,
 }
 
 # ── Urteil ──────────────────────────────────────────────────────────────────
@@ -993,6 +1012,14 @@ checks.update({
         for k in (_sv["zurueck"], _sv["vor"])),
     "Tageswahl: Vor und Zurueck wechseln den Tag": schieber["tag_vor"] > schieber["heute"]
         and schieber["tag_zurueck"] == schieber["heute"],
+})
+# Kartenkopf (M61): Stufe 1, 24 px, medium, Primaertext, in beiden Themen gleich.
+_kopf = [l["messung"] for l in kartenkopf["laeufe"]]
+checks.update({
+    "Kartenkopf: zwei Laeufe bei 480 px (hell, dunkel)": len(_kopf) == 2,
+    "Kartenkopf: Titel Stufe 1 als Ueberschrift": all(m["stufe"] == "1" and m["rolle"] == "heading" for m in _kopf),
+    "Kartenkopf: 24 px, Gewicht 500, in beiden Themen gleich": all(
+        m["groesse"] == "24px" and m["gewicht"] == "500" for m in _kopf),
 })
 # stale-loading (#1304, M51): alter Tag bleibt gedimmt und aria-busy stehen.
 _stale = [l["messung"] for l in stale["laeufe"]]

@@ -382,6 +382,22 @@ with sync_playwright() as pw:
         hoehe=1600,
     )
 
+    # ── Kartenkopf (M61): Titel bei 480 px hell und dunkel gleich ──────────
+    def kopf(p):
+        thema = p.evaluate("() => document.documentElement.dataset.theme")
+        werte = p.evaluate("""(tag) => {
+        const t = document.querySelector(tag).shadowRoot.querySelector('.title');
+        const cs = getComputedStyle(t);
+        return { groesse: cs.fontSize, gewicht: cs.fontWeight, farbe: cs.color,
+                 textfarbe: getComputedStyle(document.documentElement).getPropertyValue('--primary-text-color').trim(),
+                 stufe: t.getAttribute('data-level'), rolle: t.getAttribute('role') };
+    }""", "localtrack-zone-time-card")
+        werte["bild"] = "zonetime-480-%s.png" % thema
+        p.locator("localtrack-zone-time-card").screenshot(path=str(OUT / werte["bild"]))
+        return werte
+
+    kartenkopf = lauf_breiten(page, breiten=(480,), messung=kopf, vor_messung=voll_breit, hoehe=1600)
+
     # ── Regel 4: je ein Bild pro Thema bei 320 px ──────────────────────────
     # Zahlen belegen Lage und Groesse, nicht Lesbarkeit. Schrift in
     # Hintergrundfarbe faellt in keiner Messung auf.
@@ -613,6 +629,12 @@ checks["stale-loading: nach der Antwort nicht mehr busy"] = all(
     for m in stale_laeufe
 )
 
+_kopf = [l["messung"] for l in kartenkopf["laeufe"]]
+checks["Kartenkopf: zwei Laeufe bei 480 px (hell, dunkel)"] = len(_kopf) == 2
+checks["Kartenkopf: Titel Stufe 1 als Ueberschrift"] = all(m["stufe"] == "1" and m["rolle"] == "heading" for m in _kopf)
+checks["Kartenkopf: 24 px, Gewicht 500, in beiden Themen gleich"] = all(
+    m["groesse"] == "24px" and m["gewicht"] == "500" for m in _kopf)
+
 report = {
     "breit": wide,
     "schmal": {k: narrow[k] for k in ("zeilen", "erste", "bruttoSichtbar", "balkenSichtbar")},
@@ -624,6 +646,7 @@ report = {
     "regel1_selbsttest": regel1_selbsttest,
     "regel1_zaehlung": zahlen,
     "regel4_bilder": bilder,
+    "kartenkopf": kartenkopf,
     "stale_loading": stale,
     "stale_loading_bilder": [m["bild"] for m in stale_laeufe],
     "console_errors": console,
