@@ -1,4 +1,4 @@
-/* BEGIN BUSCH SHARED UI 0.5.0 sha256:66de1a3793f836560c2195179ea037cb71718df41533bd9ffd02b0037fce3a69 */
+/* BEGIN BUSCH SHARED UI 0.5.0 sha256:b98d07520b42944ecc6733d5a9c5645e0c6b7ed2faf103af512353d31dd4f39d */
 /** Busch UI 0.5.0 — standalone Vanilla source. Synchronized verbatim, never imported at runtime. */
 const BuschUI = (() => {
   const sourceVersion = '0.5.0';
@@ -264,15 +264,18 @@ const BuschUI = (() => {
   // M62/M63: opt-in base components. --busch-* tokens live on the opt-in classes (no :host: editor styles may sit
   // in a light DOM style element) and fall back to HA tokens; :where keeps family rules in front. Inner radius: one step, 8 px
   // (HA --ha-border-radius-md), below the 12 px card radius so nested surfaces read as inside the card.
+  // M26/E6: filled primary and destructive are a tonal fill (theme colour 50 % with the card surface) with the text colour,
+  // destructive text is the error colour mixed 70 % with the text colour: >= 4.5:1 in light and dark for #03a9f4 and #1c76be
+  // (white on #03a9f4 was 2.6:1, #212121 on #1c76be 3.4:1, filled red 4.3/3.8:1). HA blue and red stay as surface and border.
   const styles=`
 :where(.busch-btn,.busch-chip,.busch-notice,.busch-kv,.busch-state,.busch-dialog){--busch-space-1:var(--ha-space-1,4px);--busch-space-2:var(--ha-space-2,8px);--busch-space-3:var(--ha-space-3,12px);--busch-space-4:var(--ha-space-4,16px);--busch-font-size-s:var(--ha-font-size-s,12px);--busch-font-size-m:var(--ha-font-size-m,14px);--busch-font-size-l:var(--ha-font-size-l,16px);--busch-radius-inner:var(--ha-border-radius-md,8px);--busch-font-weight-medium:var(--ha-font-weight-medium,500)}
 :where(.busch-btn){display:inline-flex;align-items:center;justify-content:center;gap:var(--busch-space-2,8px);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:0 var(--busch-space-3,12px);border:1px solid transparent;border-radius:var(--busch-radius-inner,8px);background:transparent;color:var(--primary-text-color,#212121);font:inherit;font-weight:var(--busch-font-weight-medium,500);cursor:pointer}
 :where(.busch-btn):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
-:where(.busch-btn[data-variant=primary]){background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#ffffff)}
+:where(.busch-btn[data-variant=primary]){background:color-mix(in srgb,var(--primary-color,#03a9f4) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-btn[data-variant=secondary]){border:1px solid var(--divider-color,#e0e0e0);background:transparent;color:var(--primary-text-color,#212121)}
 :where(.busch-btn[data-variant=text]){background:transparent;color:var(--primary-color,#03a9f4)}
-:where(.busch-btn[data-variant=destructive]),:where(.busch-btn[data-variant=danger]){border:1px solid var(--error-color,#db4437);background:transparent;color:var(--error-color,#db4437)}
-:where(.busch-btn[data-variant=destructive][data-filled]),:where(.busch-btn[data-variant=danger][data-filled]){background:var(--error-color,#db4437);color:var(--text-primary-color,#ffffff)}
+:where(.busch-btn[data-variant=destructive]),:where(.busch-btn[data-variant=danger]){border:1px solid var(--error-color,#db4437);background:transparent;color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121))}
+:where(.busch-btn[data-variant=destructive][data-filled]),:where(.busch-btn[data-variant=danger][data-filled]){background:color-mix(in srgb,var(--error-color,#db4437) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
 :where(.busch-btn):disabled{cursor:default;opacity:0.5}
 :where(.busch-chip){display:inline-flex;align-items:center;gap:var(--busch-space-1,4px);box-sizing:border-box;min-height:28px;min-width:0;max-width:100%;padding:0 var(--busch-space-2,8px);border-radius:var(--ha-border-radius-pill,9999px);background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121);font-size:var(--busch-font-size-s,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :where(button.busch-chip){min-height:44px;border:0;font-family:inherit;cursor:pointer}
@@ -302,18 +305,22 @@ const BuschUI = (() => {
 `;
   // Scoped bases: family layout/grid/padding and domain presentation override
   // these fundamentals. No global selectors or services in shared primitives.
-  const cardStyles=styles+`
+  // The action base comes before the base components: an element with both classes (BuschUI.action on a .busch-btn) gets
+  // the busch-btn frame, radius and surface (all :where rules have zero specificity, so source order decides).
+  const actionStyles=`
+:where(.busch-ui-action){border:0;border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-2,8px) var(--ha-space-3,12px);color:var(--primary-text-color,#212121);background:var(--secondary-background-color,#eeeeee);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
+:where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+:where(.busch-ui-action[data-variant=primary]){background:color-mix(in srgb,var(--primary-color,#03a9f4) 50%,var(--card-background-color,#ffffff));color:var(--primary-text-color,#212121)}
+:where(.busch-ui-action[data-variant=secondary]){background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
+:where(.busch-ui-action[data-variant=destructive]),:where(.busch-ui-action[data-variant=danger]){color:color-mix(in srgb,var(--error-color,#db4437) 70%,var(--primary-text-color,#212121))}
+:where(.busch-ui-action[data-variant=quiet]),:where(.busch-ui-action[data-variant=icon-only]),:where(.busch-ui-action[data-variant=overflow]){background:transparent}
+:where(.busch-ui-action):disabled{cursor:default;opacity:0.5}
+`;
+  const cardStyles=actionStyles+styles+`
 .busch-ui-header{min-width:0}.busch-ui-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :where(.busch-ui-title[data-level="1"]){font-size:var(--ha-card-header-font-size,var(--ha-font-size-2xl,24px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121)}
 :where(.busch-ui-subtitle){font-size:var(--busch-font-size-s,var(--ha-font-size-s,12px));color:var(--secondary-text-color,#727272)}
 :where(.busch-ui-heading2){margin:0;font-size:var(--busch-font-size-m,var(--ha-font-size-m,14px));font-weight:var(--ha-font-weight-medium,500);color:var(--primary-text-color,#212121);text-transform:none;letter-spacing:normal;overflow-wrap:anywhere}
-:where(.busch-ui-action){border:0;border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-2,8px) var(--ha-space-3,12px);color:var(--primary-text-color,#212121);background:var(--secondary-background-color,#eeeeee);box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font:inherit;cursor:pointer}
-:where(.busch-ui-action):focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
-:where(.busch-ui-action[data-variant=primary]){background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#ffffff)}
-:where(.busch-ui-action[data-variant=secondary]){background:var(--secondary-background-color,#eeeeee);color:var(--primary-text-color,#212121)}
-:where(.busch-ui-action[data-variant=destructive]),:where(.busch-ui-action[data-variant=danger]){color:var(--error-color,#db4437)}
-:where(.busch-ui-action[data-variant=quiet]),:where(.busch-ui-action[data-variant=icon-only]),:where(.busch-ui-action[data-variant=overflow]){background:transparent}
-:where(.busch-ui-action):disabled{cursor:default;opacity:0.5}
 .busch-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ha-space-2,8px);padding:var(--ha-space-4,16px);text-align:center;min-width:0;box-sizing:border-box;color:var(--primary-text-color,#212121)}
 .busch-state-icon{--mdc-icon-size:24px;color:var(--secondary-text-color,#727272)}
 .busch-state[data-kind=error] .busch-state-icon{color:var(--error-color,#db4437)}.busch-state[data-kind=offline] .busch-state-icon{color:var(--warning-color,#ffa600)}
