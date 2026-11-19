@@ -1489,8 +1489,10 @@ class LocaltrackTimelineCard extends HTMLElement {
         }
         .segment:hover { background: var(--divider-color, #e0e0e0); }
         .segment .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
-        .segment.stay .dot { background: var(--success-color, #4caf50); }
-        .segment.move .dot { background: var(--primary-color, #03a9f4); }
+        /* M79 (#1320): the stay/move dot mixes its colour 60 % with the text colour, >= 3:1 on the row and on hover
+           (was 2.62/2.81:1 stay, 2.09:1 move). */
+        .segment.stay .dot { background: color-mix(in srgb, var(--success-color, #4caf50) 60%, var(--primary-text-color, #212121)); }
+        .segment.move .dot { background: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121)); }
         .segment .times {
           font-weight: var(--ha-font-weight-medium, 600); flex: 0 0 auto; min-width: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

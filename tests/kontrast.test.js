@@ -88,3 +88,21 @@ for (const [name, vorne, hinten] of FAELLE) {
     });
   }
 }
+
+// M79 (#1320, user decision 19.11.): coloured symbols are non-text graphics (WCAG 1.4.11) and reach 3:1 on their
+// surface, also next to a text. The stay/move dot of a timeline segment sits on the row and on its hover surface.
+const SYMBOL_THEMEN = {
+  light: { ...THEMEN.light, "--success-color": "#43a047", "--divider-color": "#e0e0e0" },
+  dark: { ...THEMEN.dark, "--success-color": "#43a047", "--divider-color": "#474747" },
+};
+for (const punkt of [".segment.stay .dot", ".segment.move .dot"]) {
+  for (const [thema, werte] of Object.entries(SYMBOL_THEMEN)) {
+    test(`M79 timeline dot ${punkt}: at least 3:1 on the row and on hover (${thema})`, () => {
+      const vorne = farbe(regel(punkt, "background"), werte);
+      for (const flaeche of [".segment", ".segment:hover"]) {
+        const wert = kontrast(vorne, farbe(regel(flaeche, "background"), werte));
+        assert.ok(wert >= 3, `${flaeche} ${wert.toFixed(2)}:1`);
+      }
+    });
+  }
+}
