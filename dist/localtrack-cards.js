@@ -1254,9 +1254,10 @@ class LocaltrackTimelineCard extends HTMLElement {
         /* Zeitregler (M56): Beschriftung und Wert ueber einem eigenen Schieber,
            Schiene und Daumen in der Primaerfarbe, 44 px hohe Trefferflaeche. */
         .scrubber { margin-top: var(--ha-space-2, 8px); }
+        /* margin-bottom: the focus ring of the slider (outline 2px, offset 2px) must not cross the caption. */
         .scrubber .scrub-head {
           display: flex; gap: ${BuschUI.tokens.space2}; align-items: baseline;
-          justify-content: space-between; min-width: 0;
+          justify-content: space-between; min-width: 0; margin-bottom: var(--ha-space-1, 4px);
         }
         .scrubber input[type="range"] {
           -webkit-appearance: none; appearance: none; display: block;

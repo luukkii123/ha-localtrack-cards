@@ -183,3 +183,16 @@ test("zone-time: month buttons have a name and type right after _build", () => {
   assert.equal(buttons.length, 2);
   assert.ok(buttons.every((b) => b.getAttribute("type") === "button"), "type in the markup");
 });
+
+test("M56 Bildprüfung 19.11.: the focus ring of the time slider stays clear of its caption", () => {
+  // timeline-scrubber.png: after the arrow keys the focused slider drew its ring
+  // (outline 2px, offset 2px) through "Uhrzeit"; the caption row sat flush on the slider.
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "dist", "localtrack-cards.js"), "utf8");
+  const ring = src.match(/:is\(button, select, input[^)]*\):focus-visible \{\s*outline: (\d+)px solid[^;]*;\s*outline-offset: (\d+)px;/);
+  assert.ok(ring, "card-wide focus ring rule");
+  const head = src.match(/\.scrubber \.scrub-head \{([\s\S]*?)\n\s*\}/);
+  assert.ok(head, "caption row rule");
+  const gap = head[1].match(/margin-bottom: var\(--ha-space-\d+, (\d+)px\)/);
+  assert.ok(gap, "caption row keeps a gap to the slider");
+  assert.ok(Number(gap[1]) >= Number(ring[1]) + Number(ring[2]), `gap ${gap[1]} px >= ring ${ring[1]} + ${ring[2]} px`);
+});

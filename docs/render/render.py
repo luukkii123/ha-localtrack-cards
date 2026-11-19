@@ -569,6 +569,21 @@ try:
                   tagFuer: sr.querySelector('.controls .day-name').htmlFor === card._dateEl.id,
                   datumLang: card._dateEl.getAttribute('lang'),
                   zurueck: knopf('.day-prev'), vor: knopf('.day-next'),
+                  // Bildpruefung 19.11.: the focus ring (outline + offset) of the focused
+                  // slider must stay below the caption row; the image clip covers both.
+                  fokussiert: sr.activeElement === range,
+                  ringFrei: (() => { const st = getComputedStyle(range);
+                    const top = rr.top - parseFloat(st.outlineOffset || 0) - parseFloat(st.outlineWidth || 0);
+                    return nr.bottom <= top + 0.5 && wr.bottom <= top + 0.5; })(),
+                  ausschnitt: (() => { const st = getComputedStyle(range), sc = r(sr.querySelector('.scrubber'));
+                    const ring = parseFloat(st.outlineOffset || 0) + parseFloat(st.outlineWidth || 0);
+                    const left = Math.min(sc.left, rr.left - ring), top = Math.min(sc.top, nr.top, wr.top, rr.top - ring);
+                    const right = Math.max(sc.right, rr.right + ring), bottom = Math.max(sc.bottom, rr.bottom + ring);
+                    return { x: Math.max(0, left - 4), y: Math.max(0, top - 4),
+                             width: right - left + 8, height: bottom - top + 8 }; })(),
+                  // Unscrolled and inside the viewport: viewport and page coordinates of the clip agree.
+                  ausschnittImFenster: scrollX === 0 && scrollY === 0
+                    && rr.bottom + 8 <= innerHeight && nr.top >= 4,
                 };
             }""")
 
@@ -578,8 +593,10 @@ try:
         page.keyboard.press("ArrowRight")
         page.wait_for_timeout(200)
         schieber["nach_pfeil"] = schieber_messen()
-        page.locator("localtrack-timeline-card .scrubber").screenshot(
-            path=str(OUT / "timeline-scrubber.png"))
+        # Clip around caption, slider and its focus ring (plus 4 px), not the bare
+        # .scrubber box: that cut the caption at the top edge and the ring on three sides.
+        page.screenshot(path=str(OUT / "timeline-scrubber.png"),
+                        clip=schieber["nach_pfeil"]["ausschnitt"])
         schieber["bild"] = "timeline-scrubber.png"
         page.keyboard.press("Home")
         page.wait_for_timeout(200)
@@ -963,6 +980,8 @@ checks.update({
     "Schieber: aria-label gleich der Beschriftung": _sv["ariaLabel"] == _sv["beschriftung"],
     "Schieber: aria-valuetext gleich dem sichtbaren Wert": _sv["valuetext"] == _sv["wert"] != "",
     "Schieber: Pfeiltaste schiebt weiter": _sn["value"] == _sv["value"] + 2,
+    "Schieber: Fokusrahmen kreuzt die Beschriftung nicht": _sn["fokussiert"] and _sn["ringFrei"],
+    "Schieber: Bildausschnitt umfasst Beschriftung und Fokusrahmen": _sn["ausschnittImFenster"],
     "Schieber: aria-valuetext folgt der Pfeiltaste": _sn["valuetext"] == _sn["wert"]
         and _sn["valuetext"] != _sv["valuetext"],
     "Tageswahl: Beschriftung Tag am Datumsfeld": _sv["tagBeschriftung"] == "Tag" and _sv["tagFuer"],
