@@ -342,21 +342,26 @@ const BuschUI = (() => {
 /* END BUSCH SHARED UI */
 
 /**
- * Local Track Cards — Lovelace-Karten für Home Assistant.
+ * Local Track Cards — Lovelace cards for Home Assistant.
  *
- * Bewusst ohne Build-Schritt: eine einzelne Datei, reines Vanilla-JS mit
- * Custom Elements. Das Repo liegt auf einer SMB-Share, auf der kein npm läuft
- * — was hier steht, ist genau das, was ausgeliefert wird.
+ * Cards (one line per `window.customCards` entry; tests/kopfkommentar.test.js
+ * compares this list with the registered entries):
+ *  - `localtrack-timeline-card` — a person's daily track on the map, from the
+ *    WebSocket command `localtrack/history`.
+ *  - `localtrack-zone-time-card` — how long a person was in a zone, a month
+ *    as a day-by-day list, from `localtrack/stats` and `localtrack/zone_time`.
+ * Each card has an editor `<type>-editor`. All data comes from the
+ * `localtrack` integration only. A new card is registered with
+ * `BuschUI.register` next to its class and gets a line in the list above.
  *
- * Enthält `localtrack-timeline-card`: den Tages-Track einer Person auf der
- * Landkarte. Die Daten kommen ausschließlich über das WebSocket-Kommando
- * `localtrack/history` aus der Integration `localtrack`.
+ * Deliberately without a build step: one file, plain vanilla JS with custom
+ * elements. The repo lives on an SMB share without npm — what is here is
+ * exactly what ships.
  *
- * Darunter steckt Leaflet 1.9.4 (BSD-2-Clause) samt CSS und Marker-
- * Bildern als data:-URIs — abgegrenzt zwischen `BEGIN VENDOR` und `END VENDOR`.
- * Grund: HACS liefert bei einer Dashboard-Ressource nur diese eine Datei aus,
- * Unterordner erreichen den Browser nie. Ausgewertet wird Leaflet erst beim
- * ersten Kartenaufbau (`localtrackLeaflet`, #1304 M21).
+ * Below sits Leaflet 1.9.4 (BSD-2-Clause) with its CSS and marker images as
+ * data: URIs, between `BEGIN VENDOR` and `END VENDOR`. Reason: HACS serves only
+ * this one file for a dashboard resource, subfolders never reach the browser.
+ * Leaflet is evaluated on the first map build only (`localtrackLeaflet`, #1304 M21).
  */
 
 const CARD_VERSION = "0.9.0";

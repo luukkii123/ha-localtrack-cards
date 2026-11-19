@@ -201,7 +201,7 @@ class FakeHTMLElement extends FakeElement {
  * registry and `window.customCards` with the first, as a browser does when the
  * module is loaded from two URLs; its `define` throws on a taken name.
  */
-function ladeKarte(namen, { sprache = "en-US", realm } = {}) {
+function ladeKarte(namen, { sprache = "en-US", realm, quelleText } = {}) {
   const elements = realm ? realm.elements : new Map();
   const document = {
     createElement: (tag) => new FakeElement(tag),
@@ -236,7 +236,7 @@ function ladeKarte(namen, { sprache = "en-US", realm } = {}) {
   }
   vm.createContext(kontext);
   const sammler = `\n;({ ${namen.join(", ")} });`;
-  const geladen = vm.runInContext(quelle() + sammler, kontext, { filename: KARTE });
+  const geladen = vm.runInContext((quelleText ?? quelle()) + sammler, kontext, { filename: KARTE });
   return { ...geladen, elements, karten: kontext.window.customCards, kontext };
 }
 
