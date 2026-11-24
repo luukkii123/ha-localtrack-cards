@@ -159,6 +159,8 @@ Sprache der Browseroberfläche).
 
 ## Geprüft
 
+**24.11.2026 · main (kein Release, Bundle unverändert), Nachholetappe J2 (#1345)** — Tests über das gemeinsame Testkit (M5), Kontrast/Touch in zindex/shared_ui (M26), 360/390 (M76). Abschlusslauf `karten-20261124-124054-53d328` 58/58 grün, Bildprüfung ok, Beleg gleich.
+
 **24.11.2026 · 0.10.2, Nachholetappe J (#1328, Tag `v0.10.2`)** — Chromium-XSS-Gegenprobe (M1), echte MDI-Symbole in den Renderskripten (M79), Kopf oben 12 px (M61). Abschlusslauf `karten-20261124-104659-fea696` grün (58/58, Volllauf, 2752 Node-Tests), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
 
 **20.11.2026 · 0.10.1, Repo-CI (#1325, Tag `v0.10.1`)** — zindex.py ersetzt Kartenkacheln ohne Netz lokal; Vertragsjob `contracts` grün. Karte unverändert. Abschlusslauf `karten-20261120-003418-9d0f74` grün (57/57, Volllauf), `--beleg-pruefen` gleich; Bildabweichungen gegen den Vorlauf nur am Gerätekopf (gewollt) und Rauschen.
