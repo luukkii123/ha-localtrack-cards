@@ -146,6 +146,8 @@ Sprache der Browseroberfläche).
 
 ## Geprüft
 
+**24.11.2026 · 0.10.2, Nachholetappe J (#1328, Tag `v0.10.2`)** — Chromium-XSS-Gegenprobe (M1), echte MDI-Symbole in den Renderskripten (M79), Kopf oben 12 px (M61). Abschlusslauf `karten-20261124-104659-fea696` grün (58/58, Volllauf, 2752 Node-Tests), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
+
 **20.11.2026 · 0.10.1, Repo-CI (#1325, Tag `v0.10.1`)** — zindex.py ersetzt Kartenkacheln ohne Netz lokal; Vertragsjob `contracts` grün. Karte unverändert. Abschlusslauf `karten-20261120-003418-9d0f74` grün (57/57, Volllauf), `--beleg-pruefen` gleich; Bildabweichungen gegen den Vorlauf nur am Gerätekopf (gewollt) und Rauschen.
 
 **20.11.2026 · 0.10.0, Buschcheck Etappe I (#1325, Tag `v0.10.0`)** — Kopfkommentar mit Test (M73), Regler/Weg/Punkte ≥ 3:1, Fokus-Token, Shared UI 0.5.3, CI aus der Vorlage (M45). 169 Node-Tests. Abschlusslauf `karten-20261119-234243-239269` grün (57/57, Volllauf, 2700 Node-Tests, Block `statisch` grün inkl. CI-Vorlage und Zeilenlänge), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
