@@ -1348,8 +1348,10 @@ class LocaltrackTimelineCard extends HTMLElement {
         :host { display: block; position: relative; z-index: 0; }
         /* Regel 4: die Karte rendert in ha-card, Innenabstand var(--ha-space-4)
            wie HAs eigener .card-content. ha-card ist hier ein Kind dieses
-           Shadow-Roots, deshalb darf und muss der Abstand von aussen kommen. */
-        ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
+           Shadow-Roots, deshalb darf und muss der Abstand von aussen kommen.
+           Oben --ha-space-3 wie HAs .card-header und die symbollose
+           busch-Karte (M61, #1331): der Titel steht 12 px unter der Kante. */
+        ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px) var(--ha-space-4, 16px); }
         .header {
           display: flex; align-items: center; justify-content: space-between;
           gap: var(--ha-space-2, 8px); margin-bottom: var(--ha-space-2, 8px);
@@ -2457,8 +2459,10 @@ const ZONE_TIME_STYLES = `
      bleiben und nicht mit Home Assistants Dialogschicht konkurrieren. */
   :host { display: block; position: relative; z-index: 0; container-type: inline-size; }
   /* Regel 4: Innenabstand var(--ha-space-4) an der ha-card, wie HAs
-     eigener .card-content. ha-card ist ein Kind dieses Shadow-Roots. */
-  ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-4, 16px); }
+     eigener .card-content. ha-card ist ein Kind dieses Shadow-Roots.
+     Oben --ha-space-3 wie HAs .card-header und die symbollose busch-Karte
+     (M61, #1331): der Titel steht 12 px unter der Kante. */
+  ha-card { display: block; box-sizing: border-box; padding: var(--ha-space-3, 12px) var(--ha-space-4, 16px) var(--ha-space-4, 16px); }
   .head { display: flex; flex-direction: column; gap: var(--ha-space-2, 8px); margin-bottom: ${BuschUI.tokens.space3}; }
   /* Regel 1: einzeiliger Titel — kuerzen, nicht umbrechen. Groesse, Gewicht
      und Farbe aus BuschUI.header level 1 (M61). */
