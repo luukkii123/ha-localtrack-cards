@@ -56,6 +56,10 @@ except ImportError:
     regeln = None
     print("ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)")
 KEIN_URTEIL = {"kein_urteil": "regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft"}
+# M26: contrast (4.5:1, large 3:1, symbols 3:1) and touch targets (44 px) of the card under test, light and dark,
+# exceptions with reason in kontrast-ausnahmen.json. Needs regeln.py; in the repo CI only `kein_urteil`.
+AUSNAHMEN = pathlib.Path(__file__).with_name("kontrast-ausnahmen.json")
+KT_KEIN_URTEIL = {"kein_urteil": "regeln.py nicht gefunden - Kontrast/Touch nicht geprueft"}
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -267,6 +271,8 @@ with sync_playwright() as pw:
     if regeln:
         regeln.ha_icon_attrappe(browser)  # M79: real MDI glyphs instead of an empty ha-icon
     ha_icon = {}
+    kontrast_touch = ({"kontrast": {"laeufe": []}, "touch": {"mindest_px": 44, "laeufe": []}} if regeln
+                      else {"kontrast": dict(KT_KEIN_URTEIL), "touch": dict(KT_KEIN_URTEIL)})
     for variant in ("vorher", "nachher"):
         (SERVE / f"page-{variant}.html").write_text(
             PAGE.replace("__VARIANT__", variant), encoding="utf-8"
@@ -282,6 +288,15 @@ with sync_playwright() as pw:
         ha_icon[variant] = regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL  # M79
         page.wait_for_timeout(300)
         page.screenshot(path=str(OUT / f"{variant}.png"))
+        if regeln and variant == "nachher":
+            # M26: the shipped card without the test dialog over it, in both themes (620 px).
+            page.evaluate("() => document.body.classList.remove('dialog-open')")
+            for thema in ("light", "dark"):
+                regeln._thema_setzen(page, thema)
+                page.wait_for_timeout(300)
+                gemessen = regeln.messe_kontrast_touch_hier(page, "localtrack-timeline-card", ausnahmen=AUSNAHMEN)
+                for bereich in ("kontrast", "touch"):
+                    kontrast_touch[bereich]["laeufe"].append({"breite": 620, "thema": thema, **gemessen[bereich]})
         page.close()
     browser.close()
 server.terminate()
@@ -321,17 +336,26 @@ verdict = {
 }
 # M79: stand-in active and every requested icon has a path (not judged in the repo CI without regeln.py).
 verdict["ha_icon_ok"] = not regeln or all(h["aktiv"] and not h["fehlend"] for h in ha_icon.values())
+# M26: both themes measured, at least one text judged, no finding (as regeln.bewerte; `kein_urteil` is counted
+# in the report, not passed). Not judged in the repo CI without regeln.py.
+verdict["kontrast_touch_ok"] = not regeln or (
+    len(kontrast_touch["kontrast"]["laeufe"]) == 2
+    and all(l.get("geprueft", 0) >= 1 and not l.get("kontrast_verstoesse")
+            for l in kontrast_touch["kontrast"]["laeufe"])
+    and all(not l.get("touch_verstoesse") for l in kontrast_touch["touch"]["laeufe"])
+)
 verdict["bestanden"] = (
     verdict["ueberlappung_vorhanden"]
     and verdict["vorher_karte_liegt_oben"]
     and verdict["nachher_dialog_liegt_oben"]
     and verdict["titel_ist_freundlicher_name"]
     and verdict["ha_icon_ok"]
+    and verdict["kontrast_touch_ok"]
     and not console_errors
     and not page_errors
 )
 
-report = {"messung": results, "urteil": verdict}
+report = {"messung": results, "urteil": verdict, **kontrast_touch}
 (OUT / "report.json").write_text(
     json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
 )

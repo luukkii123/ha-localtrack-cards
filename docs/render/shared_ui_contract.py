@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright
 for candidate in ("/work", str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if candidate not in sys.path:
         sys.path.append(candidate)
-from regeln import _thema_setzen, ha_icon_attrappe, ha_icon_fehlend, messe_text
+from regeln import _thema_setzen, ha_icon_attrappe, ha_icon_fehlend, messe_kontrast_touch_hier, messe_text
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -35,6 +35,9 @@ OUT = pathlib.Path(os.environ.get(
     "LOCALTRACK_CONTRACT_OUT", ROOT / "docs" / "render" / "shared-ui-ergebnis"
 ))
 OUT.mkdir(parents=True, exist_ok=True)
+# M26: contrast and touch exceptions of this repo (with reason), shared with render.py and zonetime.py.
+AUSNAHMEN = pathlib.Path(__file__).with_name("kontrast-ausnahmen.json")
+WIDTHS = (320, 390, 480, 960)
 
 CASES = (
     ("timeline", "render.py", "localtrack-timeline-card", ".header", ".controls input[type=date]",
@@ -164,6 +167,24 @@ def map_corner_frame(page, size=16, tolerance=3):
     return worst
 
 
+def kontrast_touch(page, tag, name, width, theme, zustand):
+    """M26: contrast (4.5:1, large 3:1, symbols 3:1) and touch targets (44 px) of the
+    card in its current state; one run per card, width, theme and state in report.json."""
+    measured = messe_kontrast_touch_hier(page, tag, ausnahmen=AUSNAHMEN)
+    label = f"{name}-{width}-{theme}-{zustand}"
+    for area in ("kontrast", "touch"):
+        report[area]["ausnahmen_datei"] = measured[area].get("ausnahmen_datei")
+        report[area]["laeufe"].append({"breite": width, "thema": theme, "karte": name, "zustand": zustand,
+                                       **measured[area]})
+    kontrast, touch = measured["kontrast"], measured["touch"]
+    if kontrast.get("kontrast_verstoesse"):
+        report["failures"].append(f"{label}: contrast {kontrast['kontrast_verstoesse']}")
+    if not kontrast.get("geprueft"):
+        report["failures"].append(f"{label}: no text judged for contrast")
+    if touch.get("touch_verstoesse"):
+        report["failures"].append(f"{label}: touch targets below 44px {touch['touch_verstoesse']}")
+
+
 def editor_fixture(page, tag):
     return page.evaluate("""tag => {
       let wrap = document.getElementById('editor-fixture');
@@ -215,7 +236,8 @@ def editor_fixture(page, tag):
     }""", tag)
 
 
-report = {"contract": "0.1.0", "cases": [], "failures": [], "haIcon": {}}
+report = {"contract": "0.1.0", "cases": [], "failures": [], "haIcon": {},
+          "kontrast": {"laeufe": []}, "touch": {"mindest_px": 44, "laeufe": []}}
 with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
     browser = pw.chromium.launch(args=["--no-sandbox"])
     ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
@@ -249,7 +271,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                 }
               }
             }""")
-            for width in (320, 390, 480, 960):
+            for width in WIDTHS:
                 for theme in ("light", "dark"):
                     page.set_viewport_size({"width": width, "height": 1600})
                     _thema_setzen(page, theme)
@@ -284,6 +306,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                     ):
                         report["failures"].append(f"{label}: segment lacks keyboard semantics")
                     page.locator(tag).screenshot(path=str(OUT / f"{label}-card.png"))
+                    kontrast_touch(page, tag, name, width, theme, "daten")
                     details = editor_fixture(page, tag)
                     report["cases"][-1]["editor"] = details
                     if (not details["count"] or not all(details["helpers"])
@@ -353,6 +376,7 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                                   ("ueberlauf", "ausserhalb", "ueberlappung")}
                         if any(issues.values()):
                             report["failures"].append(f"{label}-{state}: visible text {issues}")
+                        kontrast_touch(page, tag, name, width, theme, state)
                         if name == "timeline":
                             # #1318: no second frame (corner arcs) around the state box.
                             corners = map_corner_frame(page)
@@ -549,6 +573,12 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
             httpd.shutdown()
             httpd.server_close()
     browser.close()
+
+# M26: exceptions of the list that no run used (as regeln.messe_kontrast_touch reports them).
+_liste = json.loads(AUSNAHMEN.read_text(encoding="utf-8")) if AUSNAHMEN.is_file() else {}
+for _area in ("kontrast", "touch"):
+    _used = {a.get("selektor") for run in report[_area]["laeufe"] for a in run.get("ausnahmen", [])}
+    report[_area]["ungenutzte_ausnahmen"] = [a["selektor"] for a in _liste.get(_area, []) if a["selektor"] not in _used]
 
 (OUT / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
 print(json.dumps({"cases": len(report["cases"]), "failures": report["failures"]}, ensure_ascii=False))
