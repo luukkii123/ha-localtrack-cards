@@ -40,6 +40,13 @@ WebSocket-Antworten (`localtrack/history`, `localtrack/stats`,
 `ha-form`-Attrappe geprüft; ob Home Assistants echtes `ha-form` die Selektoren
 genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 
+`ha-icon` kommt in allen vier Browser-Skripten (`render.py`, `zonetime.py`,
+`zindex.py`, `shared_ui_contract.py`) aus der gemeinsamen Attrappe
+`regeln.ha_icon_attrappe` (M79): echte MDI-Glyphen aus `mdi-pfade.json` statt
+Raute oder leerem Element; `report.json` meldet unter `haIcon`, ob sie aktiv ist
+und welche Symbole keinen Pfad haben (dann rot). `zindex.py` läuft im Repo-CI
+ohne `regeln.py` weiter und vermerkt dort nur `kein_urteil`.
+
 | Skript | Prüft |
 | --- | --- |
 | `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf; Variante `stale-loading`: Tageswechsel mit hängender Antwort, alter Tag gedimmt mit `aria-busy`; Zeitregler (M56): gestaltet, 44 px, im Bild, beschriftet, Pfeiltasten und `aria-valuetext`, Tageswahl mit Beschriftung, `lang` und Vor/Zurück (Bild `timeline-scrubber.png`); Kartenkopf (M61) bei 480 px hell/dunkel (Bilder `timeline-480-*.png`); Kontrast und Touchziele (M26, Bereiche `kontrast`/`touch`, Ausnahmen mit Grund in `kontrast-ausnahmen.json`) |

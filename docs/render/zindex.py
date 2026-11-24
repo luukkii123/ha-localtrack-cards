@@ -41,6 +41,22 @@ import time
 
 from playwright.sync_api import sync_playwright
 
+# M79: shared ha-icon stand-in with real MDI glyphs from hacs/docs/render/regeln.py (/work in the runner container).
+# M45: the repo CI job `contracts` has no regeln.py. Without it the script keeps its own simple ha-icon and skips
+# only the stand-in check (haIcon.kein_urteil in report.json). Where /work exists (runner) regeln.py stays mandatory.
+for _kandidat in ("/work", str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
+    if pathlib.Path(_kandidat, "regeln.py").is_file():
+        sys.path.insert(0, _kandidat)
+        break
+try:
+    import regeln  # noqa: E402
+except ImportError:
+    if pathlib.Path("/work").exists():
+        sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
+    regeln = None
+    print("ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)")
+KEIN_URTEIL = {"kein_urteil": "regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft"}
+
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -248,6 +264,9 @@ results = {}
 console_errors, page_errors = [], []
 with sync_playwright() as pw:
     browser = pw.chromium.launch(args=["--no-sandbox"])
+    if regeln:
+        regeln.ha_icon_attrappe(browser)  # M79: real MDI glyphs instead of an empty ha-icon
+    ha_icon = {}
     for variant in ("vorher", "nachher"):
         (SERVE / f"page-{variant}.html").write_text(
             PAGE.replace("__VARIANT__", variant), encoding="utf-8"
@@ -260,6 +279,7 @@ with sync_playwright() as pw:
         page.wait_for_function("window.__card && window.__card._map", timeout=20000)
         page.wait_for_timeout(2500)
         results[variant] = page.evaluate(PROBE)
+        ha_icon[variant] = regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL  # M79
         page.wait_for_timeout(300)
         page.screenshot(path=str(OUT / f"{variant}.png"))
         page.close()
@@ -297,12 +317,16 @@ verdict = {
     "console_errors": console_errors,
     "page_errors": page_errors,
     "extern": external,
+    "haIcon": ha_icon,
 }
+# M79: stand-in active and every requested icon has a path (not judged in the repo CI without regeln.py).
+verdict["ha_icon_ok"] = not regeln or all(h["aktiv"] and not h["fehlend"] for h in ha_icon.values())
 verdict["bestanden"] = (
     verdict["ueberlappung_vorhanden"]
     and verdict["vorher_karte_liegt_oben"]
     and verdict["nachher_dialog_liegt_oben"]
     and verdict["titel_ist_freundlicher_name"]
+    and verdict["ha_icon_ok"]
     and not console_errors
     and not page_errors
 )

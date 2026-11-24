@@ -57,7 +57,7 @@ for _kandidat in ("/work",
                   str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if _kandidat not in sys.path:
         sys.path.append(_kandidat)
-from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_text, selbsttest, zaehle
+from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_kontrast_touch, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -264,6 +264,8 @@ WIDE = """() => {
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(args=["--no-sandbox"])
+    ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
+    ha_icon = {}
 
     # ── breit ──────────────────────────────────────────────────────────────
     (SERVE / "page.html").write_text(PAGE.replace("__MAXW__", "560"), encoding="utf-8")
@@ -504,6 +506,7 @@ with sync_playwright() as pw:
                           - sr.querySelector('.head').getBoundingClientRect().top);
     }""")
     stale = lauf_breiten(page, breiten=(320,), messung=stale_bild, vor_messung=voll_breit, hoehe=1600)
+    ha_icon["breit"] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
     page.close()
 
     # ── schmal ─────────────────────────────────────────────────────────────
@@ -517,6 +520,7 @@ with sync_playwright() as pw:
     page.wait_for_timeout(400)
     narrow = page.evaluate(WIDE)
     page.screenshot(path=str(OUT / "schmal.png"), full_page=True)
+    ha_icon["schmal"] = ha_icon_fehlend(page)
     page.close()
 
     # ── Chromium-Gegenprobe XSS (M1, #1328) ────────────────────────────────
@@ -579,6 +583,7 @@ with sync_playwright() as pw:
     }""")
     page.locator("localtrack-zone-time-card").screenshot(path=str(OUT / "zonetime-xss.png"))
     xss.update({"dialoge": dialoge, "bild": "zonetime-xss.png"})
+    ha_icon["xss"] = ha_icon_fehlend(page)
     page.close()
     browser.close()
 
@@ -663,6 +668,8 @@ checks["XSS: Payload als Text sichtbar (Menues, Auswahl, Titel)"] = (
     and xss["personGewaehlt"] == XSS[0]
     and xss["titel"] == XSS[0] and xss["titelSichtbar"]
 )
+checks["ha-icon-Attrappe aktiv, jedes Symbol mit Pfad (M79)"] = bool(ha_icon) and all(
+    h["aktiv"] and not h["fehlend"] for h in ha_icon.values())
 checks["keine Konsolenfehler"] = console == []
 checks["keine Seitenfehler"] = errors == []
 
@@ -750,6 +757,7 @@ report = {
     "kartenkopf": kartenkopf,
     **kontrast_touch,
     "xss": xss,
+    "haIcon": ha_icon,
     "stale_loading": stale,
     "stale_loading_bilder": [m["bild"] for m in stale_laeufe],
     "console_errors": console,

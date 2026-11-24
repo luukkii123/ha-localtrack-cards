@@ -70,7 +70,7 @@ for _kandidat in ("/work",
                   str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if _kandidat not in sys.path:
         sys.path.append(_kandidat)
-from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_kontrast_touch_hier, messe_text, selbsttest, zaehle
+from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_kontrast_touch, messe_kontrast_touch_hier, messe_text, selbsttest, zaehle
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
@@ -435,6 +435,8 @@ requests, responses, failures, console, errors = [], [], [], [], []
 try:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox"])
+        ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
+        ha_icon = {}
         page = browser.new_page(viewport={"width": WIDTH, "height": 900},
                                 device_scale_factor=2, locale="de-DE")
         page.on("request", lambda r: requests.append(r.url))
@@ -871,6 +873,7 @@ try:
             return werte
 
         stale = lauf_breiten(page, breiten=(320,), messung=stale_bild, vor_messung=voll_breit)
+        ha_icon["timeline"] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
 
         # ── Variante „mapcard" (#1304, M21) ────────────────────────────────
         # Je Reihenfolge eine frische Seite: einmal baut die Timeline zuerst
@@ -890,6 +893,7 @@ try:
                 mp.screenshot(path=str(OUT / name), full_page=True)
                 lauf.update({"seitenfehler": fehler, "bild": name})
                 mapcard["laeufe"].append(lauf)
+                ha_icon["mapcard-%s" % zuerst] = ha_icon_fehlend(mp)
                 mp.close()
 
         # ── Variante „picker-preview" (#1304, M53) ─────────────────────────
@@ -922,6 +926,7 @@ try:
         pp.wait_for_timeout(400)
         pp.screenshot(path=str(OUT / "picker-preview-390.png"), full_page=True)
         picker["bilder"] = ["picker-preview.png", "picker-preview-390.png"]
+        ha_icon["picker-preview"] = ha_icon_fehlend(pp)
         pp.close()
         browser.close()
 finally:
@@ -950,6 +955,7 @@ report = {
     "stale_loading": stale,
     "schieber": schieber,
     "kartenkopf": kartenkopf,
+    "haIcon": ha_icon,
     **kontrast_touch,
 }
 
@@ -957,6 +963,8 @@ report = {
 checks = {
     "keine Konsolenfehler": report["console_errors"] == [],
     "keine Seitenfehler": report["page_errors"] == [],
+    "ha-icon-Attrappe aktiv, jedes Symbol mit Pfad (M79)": bool(ha_icon) and all(
+        h["aktiv"] and not h["fehlend"] for h in report["haIcon"].values()),
     "kein Nachladeversuch auf vendor/hacsfiles": report["vendor_requests"] == [],
     "keine Antwort ab 400": report["bad_responses"] == [],
     # Regel 1: die Messung selbst muss zuerst beweisen, dass sie anschlaegt.

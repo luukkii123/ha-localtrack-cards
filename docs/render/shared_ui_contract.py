@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright
 for candidate in ("/work", str(pathlib.Path(__file__).resolve().parents[3] / "docs" / "render")):
     if candidate not in sys.path:
         sys.path.append(candidate)
-from regeln import _thema_setzen, messe_text
+from regeln import _thema_setzen, ha_icon_attrappe, ha_icon_fehlend, messe_text
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -215,9 +215,10 @@ def editor_fixture(page, tag):
     }""", tag)
 
 
-report = {"contract": "0.1.0", "cases": [], "failures": []}
+report = {"contract": "0.1.0", "cases": [], "failures": [], "haIcon": {}}
 with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
     browser = pw.chromium.launch(args=["--no-sandbox"])
+    ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
     for name, script_name, tag, header, control, selectors in CASES:
         directory = pathlib.Path(temp) / name
         directory.mkdir()
@@ -539,6 +540,10 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
             for state, passed in state_contract.items():
                 if not passed:
                     report["failures"].append(f"{name}: real {state} state retains stale data")
+            # M79: stand-in active, every requested icon has a path.
+            ha_icon = report["haIcon"][name] = ha_icon_fehlend(page)
+            if not ha_icon["aktiv"] or ha_icon["fehlend"]:
+                report["failures"].append(f"{name}: ha-icon stand-in {ha_icon}")
             page.close()
         finally:
             httpd.shutdown()
