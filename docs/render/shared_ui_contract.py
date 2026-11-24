@@ -37,7 +37,8 @@ OUT = pathlib.Path(os.environ.get(
 OUT.mkdir(parents=True, exist_ok=True)
 # M26: contrast and touch exceptions of this repo (with reason), shared with render.py and zonetime.py.
 AUSNAHMEN = pathlib.Path(__file__).with_name("kontrast-ausnahmen.json")
-WIDTHS = (320, 390, 480, 960)
+# M76: phone widths 360 and 390 next to 320/480/960 for every card, state and editor.
+WIDTHS = (320, 360, 390, 480, 960)
 
 CASES = (
     ("timeline", "render.py", "localtrack-timeline-card", ".header", ".controls input[type=date]",
@@ -185,6 +186,23 @@ def kontrast_touch(page, tag, name, width, theme, zustand):
         report["failures"].append(f"{label}: touch targets below 44px {touch['touch_verstoesse']}")
 
 
+def popups(page, selector):
+    """M76/Regel 2: own popups (dialog, role=dialog, fixed overlay) below `selector`,
+    across shadow roots. The cards and editors have none; a new one would need
+    the Regel 2 measurement (Escape, back, close, scrim)."""
+    return page.evaluate("""selector => {
+      const roots = [], walk = root => { roots.push(root);
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) walk(el.shadowRoot); };
+      const host = document.querySelector(selector);
+      if (!host) return ['missing ' + selector];
+      walk(host.shadowRoot || host);
+      return roots.flatMap(root => [...root.querySelectorAll('*')])
+        .filter(el => el.localName === 'dialog' || el.getAttribute('role') === 'dialog'
+          || el.getAttribute('aria-modal') === 'true' || getComputedStyle(el).position === 'fixed')
+        .map(el => el.localName + (el.className ? '.' + String(el.className).split(' ').join('.') : ''));
+    }""", selector)
+
+
 def editor_fixture(page, tag):
     return page.evaluate("""tag => {
       let wrap = document.getElementById('editor-fixture');
@@ -236,8 +254,8 @@ def editor_fixture(page, tag):
     }""", tag)
 
 
-report = {"contract": "0.1.0", "cases": [], "failures": [], "haIcon": {},
-          "kontrast": {"laeufe": []}, "touch": {"mindest_px": 44, "laeufe": []}}
+report = {"contract": "0.1.0", "breiten": list(WIDTHS), "cases": [], "failures": [], "haIcon": {},
+          "kontrast": {"laeufe": []}, "touch": {"mindest_px": 44, "laeufe": []}, "editoren": []}
 with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
     browser = pw.chromium.launch(args=["--no-sandbox"])
     ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
@@ -307,13 +325,28 @@ with tempfile.TemporaryDirectory() as temp, sync_playwright() as pw:
                         report["failures"].append(f"{label}: segment lacks keyboard semantics")
                     page.locator(tag).screenshot(path=str(OUT / f"{label}-card.png"))
                     kontrast_touch(page, tag, name, width, theme, "daten")
+                    card_popups = popups(page, tag)
+                    if card_popups:
+                        report["failures"].append(f"{label}: own popup without Regel 2 measurement {card_popups}")
                     details = editor_fixture(page, tag)
+                    # M76: Regel 1 (text in its container) and Regel 2 (no own popup) for the editor at every width.
+                    editor_text = messe_text(page, "#editor-fixture")
+                    details["regel1"] = {key: len(editor_text[key]) for key in ("ueberlauf", "ausserhalb", "ueberlappung")}
+                    details["regel1_geprueft"] = editor_text.get("geprueft", 0)
+                    details["popups"] = popups(page, "#editor-fixture")
                     report["cases"][-1]["editor"] = details
+                    report["editoren"].append({"editor": f"{tag}-editor", "breite": width, "thema": theme,
+                                               "regel1": details["regel1"], "popups": details["popups"],
+                                               "bild": f"{label}-editor.png"})
                     if (not details["count"] or not all(details["helpers"])
                             or not details["noHorizontalScroll"]
                             or not details["noFieldCollision"]
                             or not details["focusVisible"]):
                         report["failures"].append(f"{label}: editor fields/helper/geometry")
+                    if any(details["regel1"].values()) or not details["regel1_geprueft"]:
+                        report["failures"].append(f"{label}: editor Regel 1 {details['regel1']}")
+                    if details["popups"]:
+                        report["failures"].append(f"{label}: editor has an own popup {details['popups']}")
                     page.locator("#editor-fixture").screenshot(path=str(OUT / f"{label}-editor.png"))
                     page.locator("#editor-fixture").evaluate("el => el.remove()")
                     for state in ("loading", "empty", "error", "missing"):
@@ -579,6 +612,11 @@ _liste = json.loads(AUSNAHMEN.read_text(encoding="utf-8")) if AUSNAHMEN.is_file(
 for _area in ("kontrast", "touch"):
     _used = {a.get("selektor") for run in report[_area]["laeufe"] for a in run.get("ausnahmen", [])}
     report[_area]["ungenutzte_ausnahmen"] = [a["selektor"] for a in _liste.get(_area, []) if a["selektor"] not in _used]
+# M76: every editor at every width, 360 and 390 included.
+for _tag in ("localtrack-timeline-card-editor", "localtrack-zone-time-card-editor"):
+    _seen = sorted({e["breite"] for e in report["editoren"] if e["editor"] == _tag})
+    if _seen != sorted(WIDTHS):
+        report["failures"].append(f"{_tag}: widths {_seen}, expected {sorted(WIDTHS)}")
 
 (OUT / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
 print(json.dumps({"cases": len(report["cases"]), "failures": report["failures"]}, ensure_ascii=False))

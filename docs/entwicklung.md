@@ -66,7 +66,7 @@ ohne `regeln.py` weiter und vermerkt dort nur `kein_urteil`.
 | `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen; Variante `stale-loading`: Monatswechsel mit hängender Antwort, alter Monat gedimmt mit `aria-busy`, Hinweis in der Notizzeile; Kartenkopf (M61, Bilder `zonetime-480-*.png`); Kontrast und Touchziele (M26) wie `render.py`; Chromium-Gegenprobe XSS (M1, Bereich `xss`, Bild `zonetime-xss.png`) |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext); Kontrast und Touchziele (M26) der Karte bei 620 px hell/dunkel, im Repo-CI ohne `regeln.py` nur `kein_urteil` |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |
-| `shared_ui_contract.py` | beide Karten und Editoren: lange Namen, Lade-, Leer-, Fehler- und Datenzustände, 44-px-Aktionsflächen, Tastaturfokus; Kontrast und Touchziele (M26) je Karte, Zustand, Breite und Thema; erzeugt die Bilder unter `docs/visual-baselines/` |
+| `shared_ui_contract.py` | beide Karten und Editoren: lange Namen, Lade-, Leer-, Fehler- und Datenzustände, 44-px-Aktionsflächen, Tastaturfokus; Kontrast und Touchziele (M26) je Karte, Zustand, Breite und Thema; Breiten 320/360/390/480/960 hell und dunkel, Editoren je Breite mit Regel 1 und ohne eigenes Popup (Regel 2), `report.json` `editoren` (M76); erzeugt die Bilder unter `docs/visual-baselines/` |
 
 Die Skripte laufen in einem Playwright-Container
 (`mcr.microsoft.com/playwright/python:v1.62.0-noble`). Der `docker run`-Aufruf
