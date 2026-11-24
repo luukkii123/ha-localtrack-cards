@@ -22,6 +22,12 @@ Antwort, der alte Monat bleibt gedimmt mit `aria-busy` stehen, der Hinweis
 steht in der Notizzeile (Bilder `zonetime-320-light-stale-loading.png`,
 `zonetime-320-dark-stale-loading.png`).
 
+Seit #1328 (M1) die **Chromium-Gegenprobe XSS**: jede Nutzlast aus
+`tests/_testkit.cjs` (`XSS_PAYLOADS`) als `friendly_name` von Personen und
+Zonen; im Shadow-DOM kein `img`, kein `script`, kein `on*`-Attribut, kein
+Dialog, die Nutzlast steht als Text in Menues und Titel (`report.json`
+Bereich `xss`, Bild `zonetime-xss.png`).
+
 Auf diesem Server laeuft Playwright nur im Container. Der Aufruf braucht
 **beide** Mounts, `/work` (hacs/docs/render, wegen `regeln.py`) und `/cards`:
 (`HACS_DIR` = Pfad des hacs-Ordners auf dem Server)
@@ -34,8 +40,10 @@ Auf diesem Server laeuft Playwright nur im Container. Der Aufruf braucht
           python3 /cards/docs/render/zonetime.py /cards/dist/localtrack-cards.js \
                   /cards/docs/render/zonetime-ergebnis'
 """
+import ast
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -53,6 +61,24 @@ from regeln import bewerte, lauf_breiten, messe_kontrast_touch, messe_text, selb
 
 JS = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2])
+
+
+def xss_payloads():
+    """XSS_PAYLOADS of tests/_testkit.cjs (M1, one source for Node and Chromium).
+
+    The file is read as data, never executed: the frozen array holds one
+    quoted string per line, and those literals are valid Python literals.
+    """
+    kit = (pathlib.Path(__file__).resolve().parents[2] / "tests" / "_testkit.cjs").read_text(encoding="utf-8")
+    block = re.search(r"const XSS_PAYLOADS = Object\.freeze\(\[(.*?)\]\);", kit, re.S)
+    werte = [ast.literal_eval(m) for m in re.findall(r"^\s*('(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\")\s*,?\s*$",
+                                                     block.group(1) if block else "", re.M)]
+    if not any("<img" in w for w in werte):
+        sys.exit("XSS_PAYLOADS aus tests/_testkit.cjs nicht lesbar: %r" % werte)
+    return werte
+
+
+XSS = xss_payloads()
 OUT.mkdir(parents=True, exist_ok=True)
 SERVE = OUT / "serve"
 SERVE.mkdir(exist_ok=True)
@@ -492,6 +518,68 @@ with sync_playwright() as pw:
     narrow = page.evaluate(WIDE)
     page.screenshot(path=str(OUT / "schmal.png"), full_page=True)
     page.close()
+
+    # ── Chromium-Gegenprobe XSS (M1, #1328) ────────────────────────────────
+    # The Node tests prove the menus in a fake DOM. Here the real parser: since
+    # Chromium 135 an `<img onerror>` inside `<select>` survives, so a string
+    # sink would create it. Every testkit payload is a friendly_name (persons
+    # from stats.tracked, zones with coordinates); the zone of the card carries
+    # the img payload, so it is also the title. No img may exist in the shadow
+    # DOM, no dialog may open, and every payload must be visible as text.
+    xss_setup = """<script>
+  window.__xssPayloads = __XSS__;
+  (() => {
+    const h = window.__hass, states = h.states, tracked = [];
+    window.__xssPayloads.forEach((name, i) => {
+      const person = i ? 'person.xss_' + i : 'person.testperson';
+      states[person] = { entity_id: person, state: 'home', attributes: { friendly_name: name } };
+      tracked.push(person);
+      const zone = i ? 'zone.xss_' + i : 'zone.arbeit';
+      states[zone] = { entity_id: zone, state: '0', attributes: { friendly_name: name,
+        latitude: 52.44 + i / 100, longitude: 13.36, radius: 100 } };
+    });
+    const callWS = h.callWS;
+    h.callWS = (msg) => (msg.type === 'localtrack/stats'
+      ? (window.__ws.push(msg), Promise.resolve({ tracked })) : callWS.call(h, msg));
+  })();
+</script>
+<script src="/localtrack-cards.js"></script>"""
+    xss_seite = PAGE.replace("__MAXW__", "440").replace(
+        '<script src="/localtrack-cards.js"></script>',
+        xss_setup.replace("__XSS__", json.dumps(XSS).replace("<", "\\u003c")), 1)
+    (SERVE / "page-xss.html").write_text(xss_seite, encoding="utf-8")
+    dialoge = []
+    page = browser.new_page(viewport={"width": 480, "height": 1400}, locale="de-DE")
+    page.on("console", lambda m: console.append((m.type, m.text)) if m.type == "error" else None)
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("dialog", lambda d: (dialoge.append(d.message), d.dismiss()))
+    page.clock.install(time="2026-09-25T12:00:00Z")
+    page.goto(f"http://127.0.0.1:{PORT}/page-xss.html", wait_until="load")
+    page.wait_for_function("window.__card && window.__card._result", timeout=20000)
+    page.wait_for_timeout(400)
+    xss = page.evaluate("""() => {
+        const sr = window.__card.shadowRoot;
+        const texte = (sel) => [...sr.querySelectorAll(sel + ' option')].map((o) => o.textContent);
+        const titel = sr.querySelector('.title');
+        const box = titel.getBoundingClientRect();
+        return {
+          payloads: window.__xssPayloads,
+          img: sr.querySelectorAll('img').length,
+          imgDokument: document.querySelectorAll('img').length,
+          script: sr.querySelectorAll('script').length,
+          onAttribute: [...sr.querySelectorAll('*')]
+            .flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name))
+              .map((a) => el.tagName.toLowerCase() + '[' + a.name + ']')),
+          personen: texte('.pick-entity'),
+          zonen: texte('.pick-zone'),
+          personGewaehlt: sr.querySelector('.pick-entity').selectedOptions[0]?.textContent ?? null,
+          titel: titel.innerText.trim(),
+          titelSichtbar: box.width > 0 && box.height > 0,
+        };
+    }""")
+    page.locator("localtrack-zone-time-card").screenshot(path=str(OUT / "zonetime-xss.png"))
+    xss.update({"dialoge": dialoge, "bild": "zonetime-xss.png"})
+    page.close()
     browser.close()
 
 server.terminate()
@@ -563,6 +651,17 @@ checks["Editor schreibt Standardwerte NICHT"] = (
 )
 checks["Editor schreibt Abweichungen schon"] = (
     editor["nachAenderung"].get("max_gap_minutes") == 45
+)
+checks["XSS: Payloads aus dem Testkit gerendert"] = xss["payloads"] == XSS
+checks["XSS: kein img im Shadow-DOM"] = xss["img"] == 0 and xss["imgDokument"] == 0
+checks["XSS: kein script, kein on*-Attribut, kein Dialog"] = (
+    xss["script"] == 0 and xss["onAttribute"] == [] and xss["dialoge"] == []
+)
+checks["XSS: Payload als Text sichtbar (Menues, Auswahl, Titel)"] = (
+    all(p in xss["personen"] for p in XSS)
+    and all(p in xss["zonen"] for p in XSS)
+    and xss["personGewaehlt"] == XSS[0]
+    and xss["titel"] == XSS[0] and xss["titelSichtbar"]
 )
 checks["keine Konsolenfehler"] = console == []
 checks["keine Seitenfehler"] = errors == []
@@ -650,6 +749,7 @@ report = {
     "regel4_bilder": bilder,
     "kartenkopf": kartenkopf,
     **kontrast_touch,
+    "xss": xss,
     "stale_loading": stale,
     "stale_loading_bilder": [m["bild"] for m in stale_laeufe],
     "console_errors": console,

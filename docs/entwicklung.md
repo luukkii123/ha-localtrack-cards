@@ -43,7 +43,7 @@ genauso darstellt, entscheidet erst ein Test in einer echten Installation.
 | Skript | Prüft |
 | --- | --- |
 | `render.py` | Timeline-Karte: Textüberlauf, Kollisionen, Hell/Dunkel bei 320/480/960 px, Netzanfragen (Seite, JS, Kacheln; keine Nachladung aus Unterordnern); Variante `mapcard`: mit busch-map-card auf einer Seite, eine Leaflet-Instanz in beiden Ladereihenfolgen; Variante `picker-preview`: beide Karten im nachgebauten Kartenwähler ohne WebSocket-, Kachel- und Nominatim-Abruf; Variante `stale-loading`: Tageswechsel mit hängender Antwort, alter Tag gedimmt mit `aria-busy`; Zeitregler (M56): gestaltet, 44 px, im Bild, beschriftet, Pfeiltasten und `aria-valuetext`, Tageswahl mit Beschriftung, `lang` und Vor/Zurück (Bild `timeline-scrubber.png`); Kartenkopf (M61) bei 480 px hell/dunkel (Bilder `timeline-480-*.png`); Kontrast und Touchziele (M26, Bereiche `kontrast`/`touch`, Ausnahmen mit Grund in `kontrast-ausnahmen.json`) |
-| `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen; Variante `stale-loading`: Monatswechsel mit hängender Antwort, alter Monat gedimmt mit `aria-busy`, Hinweis in der Notizzeile; Kartenkopf (M61, Bilder `zonetime-480-*.png`); Kontrast und Touchziele (M26) wie `render.py` |
+| `zonetime.py` | Verweildauer-Karte: dasselbe, dazu Sprachen und Tageszeilen; Variante `stale-loading`: Monatswechsel mit hängender Antwort, alter Monat gedimmt mit `aria-busy`, Hinweis in der Notizzeile; Kartenkopf (M61, Bilder `zonetime-480-*.png`); Kontrast und Touchziele (M26) wie `render.py`; Chromium-Gegenprobe XSS (M1, Bereich `xss`, Bild `zonetime-xss.png`) |
 | `zindex.py` | Stapelkontext der Karte gegen Dialogschichten (Leaflet vergibt hohe z-index-Werte; der Host der Karte bildet deshalb einen eigenen Stapelkontext) |
 | `editor_contract.py` | beide Editoren: unveränderte Werte lösen kein erneutes Form-Update aus, `0` und `false` bleiben erhalten, verschachtelte Werte sind vom Eingabeobjekt isoliert, `keydown`/`keyup` verlassen den Editor nicht |
 | `shared_ui_contract.py` | beide Karten und Editoren: lange Namen, Lade-, Leer-, Fehler- und Datenzustände, 44-px-Aktionsflächen, Tastaturfokus; erzeugt die Bilder unter `docs/visual-baselines/` |
@@ -53,6 +53,17 @@ Die Skripte laufen in einem Playwright-Container
 steht im Kopf des jeweiligen Skripts. Sie benötigen zusätzlich das Messmodul
 `regeln.py` aus dem lokalen Verwaltungsordner des Maintainers, das nicht Teil
 dieses Repositories ist; ohne es laufen sie nicht.
+
+**Chromium-Gegenprobe XSS (M1).** Die Node-Tests (`tests/zonetime-xss.test.js`)
+belegen die Auswahlmenüs in einer DOM-Attrappe. Seit Chromium 135 bleibt ein
+`<img onerror>` innerhalb von `<select>` beim Parsen erhalten; ob die Karte
+wirklich kein Element erzeugt, zeigt deshalb erst der echte Browser.
+`zonetime.py` setzt jede Nutzlast aus `XSS_PAYLOADS` (`tests/_testkit.cjs`,
+dieselbe Quelle wie die Node-Tests) als `friendly_name` von Personen und Zonen
+und prüft im Shadow-DOM: `querySelectorAll('img').length === 0`, kein
+`script`, kein `on*`-Attribut, kein Dialog, und jede Nutzlast steht als Text in
+den Menüs, in der Auswahl und im Kartentitel. Ergebnis in `report.json`
+(Bereich `xss`, Prüfungen `XSS: …`), Bild `zonetime-xss.png`.
 
 Die Bilder in `docs/visual-baselines/shared-ui-v0.1.0/` sind eine visuelle
 Referenz, kein Pixel-Hash-Test: Kacheln von OpenStreetMap können sich ändern.
