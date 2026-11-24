@@ -200,7 +200,9 @@ jobs:
                   i = scan.code(i)
               lines = text.split('\n')
               marked = lambda n: MARK.search(lines[n - 1]) or (n > 1 and MARK.search(lines[n - 2]))
-              return sorted(n for n in set(scan.found) if not marked(n))
+              # M47 (24.11.2026): no inline onerror outside the vendor block (handlers via addEventListener).
+              inline = {text.count('\n', 0, m.start()) + 1 for m in re.finditer(r'onerror\s*=', text)}
+              return sorted(n for n in set(scan.found) | inline if not marked(n))
 
 
           def main(argv):
