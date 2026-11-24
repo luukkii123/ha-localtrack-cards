@@ -31,6 +31,19 @@ Laufzeitdatei verlangen.
 Vor jedem Tag muss `CARD_VERSION` in der Datei zum Tag passen; der
 Release-Workflow prüft das.
 
+## Node-Tests
+
+`node --test tests/*.test.js` läuft ohne Browser und ohne Netz. Jeder Test lädt
+die Karte über das gemeinsame Testkit `tests/_testkit.cjs` (M5, synchronisierte
+Datei, nie von Hand ändern): vm-Lader `loadScript`, DOM-Attrappe und für die
+Verweildauer-Karte die hass-Attrappe `createHass` mit Zählern je Nachrichtentyp.
+`tests/laden.js` ergänzt nur, was das Kit dem Repo überlässt: `innerHTML` wird
+in Knoten des Kits geparst (die XSS-Tests sehen so jedes erzeugte Element),
+`connectedCallback`/`disconnectedCallback` laufen beim Ein- und Aushängen wie im
+Browser (`einhaengen(card)`), Ereignisse feuert `feuere(el, typ)`.
+`tests/testkit-nutzung.test.js` prüft, dass kein Test eine eigene vm-Sandbox
+oder DOM-Klasse mitbringt.
+
 ## Darstellungstests
 
 Unter `docs/render/` liegen Playwright-Skripte, die die ausgelieferte Datei in

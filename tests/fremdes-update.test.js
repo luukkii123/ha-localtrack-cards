@@ -8,7 +8,7 @@
 // in the sandbox) and key enumerations of hass.states.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte, zonenKarte, zustaende, ruhe } = require("./laden.js");
+const { ladeKarte, einhaengen, zonenKarte, zustaende, ruhe } = require("./laden.js");
 
 /** Records every write on `el` into `log`: attributes, children, text, title. */
 function beobachte(el, log, name) {
@@ -102,6 +102,7 @@ test("zone-time card: a changed zone updates menu and title, a new registry find
 test("timeline card: a foreign update writes no title, label or attribute", async () => {
   const k = ladeKarte(["LocaltrackTimelineCard"]);
   const card = new k.LocaltrackTimelineCard();
+  einhaengen(card);
   card._leaflet = { layerGroup: () => ({ addTo() { return this; }, clearLayers() {} }) };
   card._map = { setView() {}, removeLayer() {}, invalidateSize() {} };
   card.setConfig({ entity: "person.a" });

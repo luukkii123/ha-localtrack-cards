@@ -7,7 +7,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock, createHass } = require("./_testkit.cjs");
-const { ladeKarte } = require("./laden.js");
+const { ladeKarte, einhaengen } = require("./laden.js");
 
 /** Loads the bundle with the kit clock as the sandbox's timers and Date. */
 function laden(namen) {
@@ -48,6 +48,7 @@ test("timeline: hung day fetch → timeout error after 15 s, lock free, next ref
   ha.behaveOnce("localtrack/history", { hang: true });
 
   const card = new k.LocaltrackTimelineCard();
+  einhaengen(card);
   card._leaflet = leaflet();
   card._map = MAP;
   card.setConfig({ entity: "person.a" });
@@ -100,6 +101,7 @@ test("zone-time: hung month fetch → timeout error after 15 s, lock free, next 
   ha.behaveOnce("localtrack/zone_time", { hang: true });
 
   const card = new k.LocaltrackZoneTimeCard();
+  einhaengen(card);
   card._month = { year: 2026, month: 3 };
   card.setConfig({ entity: "person.a", zone: "zone.work" });
   card.hass = ha.hass;

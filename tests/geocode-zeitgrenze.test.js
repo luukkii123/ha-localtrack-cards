@@ -7,7 +7,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock } = require("./_testkit.cjs");
-const { ladeKarte, ruhe } = require("./laden.js");
+const { ladeKarte, feuere, einhaengen, ruhe } = require("./laden.js");
 
 function leaflet() {
   const layer = () => ({ addTo() { return this; }, setLatLng() { return this; }, clearLayers() {}, removeLayer() {} });
@@ -59,7 +59,7 @@ function karte() {
   };
   const ws = [];
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a", reverse_geocode: true });
   card.hass = { states: { "person.a": { attributes: {} } }, entities: {}, locale: { language: "en" },
     callWS: (msg) => { ws.push(msg); return Promise.resolve({ points: points(msg), simplified: false }); } };
@@ -92,7 +92,7 @@ test("hanging Nominatim blocks neither later loads nor later lookups", async () 
   await settle(clock);
   // A day change while the lookup hangs: the load runs at once.
   card._dateEl.value = "2027-01-14";
-  card._dateEl.listeners.change[0]();
+  feuere(card._dateEl, "change");
   await settle(clock);
   assert.equal(ws.length, 2, "the next day loads although Nominatim hangs");
   assert.equal(labels(), "Stay|Stay", "its list is there");
@@ -104,7 +104,7 @@ test("hanging Nominatim blocks neither later loads nor later lookups", async () 
   nominatim.mode = "ok";
   const before = nominatim.calls.length;
   card._dateEl.value = "2027-01-13";
-  card._dateEl.listeners.change[0]();
+  feuere(card._dateEl, "change");
   await settle(clock);
   assert.equal(nominatim.calls.length - before, 2, "one lookup per stay, nothing repeated");
   assert.equal(labels(), "Hauptstraße|Hauptstraße");

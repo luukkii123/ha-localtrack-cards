@@ -7,7 +7,7 @@
 // drawn before the map.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte, ruhe, offen } = require("./laden.js");
+const { ladeKarte, einhaengen, ruhe, offen } = require("./laden.js");
 
 /** Stand-in Leaflet that writes every map-side step into `order`. */
 function leaflet(order) {
@@ -53,7 +53,7 @@ function karte() {
   k.kontext.ResizeObserver = class { observe() {} disconnect() {} };
   const antwort = offen();
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a" });
   const list = card._segmentsEl;
   const insert = list.insertBefore.bind(list);

@@ -8,7 +8,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock } = require("./_testkit.cjs");
-const { ladeKarte, ruhe } = require("./laden.js");
+const { ladeKarte, einhaengen, ruhe } = require("./laden.js");
 
 /** Stand-in Leaflet whose maps count `remove()` calls. */
 function leaflet() {
@@ -37,7 +37,7 @@ async function karte() {
   const L = leaflet();
   k.kontext.L = L;
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a" });
   card.hass = { states: { "person.a": { attributes: {} } }, locale: { language: "en" },
     callWS: () => Promise.resolve({ points: [] }) };
@@ -51,8 +51,7 @@ const styles = (card) => card.shadowRoot.childNodes.filter((n) => n.tagName === 
 
 test("unhooked and not hooked in again: map.remove() exactly once, state reset", async () => {
   const { card, clock, L } = await karte();
-  card.isConnected = false;
-  card.disconnectedCallback();
+  card.remove();
   assert.equal(L.maps[0].removed, 0, "removed in the same tick");
   await clock.advance(0);
   assert.equal(L.maps[0].removed, 1);
@@ -66,10 +65,8 @@ test("unhooked and not hooked in again: map.remove() exactly once, state reset",
 
 test("moved within one tick: the map stays", async () => {
   const { card, clock, L } = await karte();
-  card.isConnected = false;
-  card.disconnectedCallback();
-  card.isConnected = true;
-  card.connectedCallback();
+  card.remove();
+  einhaengen(card);
   await clock.advance(0);
   assert.equal(L.maps[0].removed, 0);
   assert.equal(card._map, L.maps[0]);
@@ -78,11 +75,9 @@ test("moved within one tick: the map stays", async () => {
 test("hung in again after the release: a new map, one Leaflet stylesheet", async () => {
   const { card, clock, L } = await karte();
   const before = styles(card);
-  card.isConnected = false;
-  card.disconnectedCallback();
+  card.remove();
   await clock.advance(0);
-  card.isConnected = true;
-  card.connectedCallback();
+  einhaengen(card);
   await clock.advance(0);
   await ruhe();
   assert.equal(L.maps.length, 2, "no new map after hanging in again");

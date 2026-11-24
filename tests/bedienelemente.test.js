@@ -7,7 +7,7 @@
 // `hass.locale`. Buttons have their name right after `_build`, before `hass`.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte, parseHtml, ruhe, offen } = require("./laden.js");
+const { ladeKarte, feuere, einhaengen, parseHtml, ruhe, offen } = require("./laden.js");
 
 function leaflet() {
   const layer = () => ({ addTo() { return this; }, setLatLng() { return this; }, clearLayers() {}, removeLayer() {} });
@@ -39,7 +39,7 @@ function timeline({ language = "en", config = {}, fetch } = {}) {
   k.kontext.ResizeObserver = class { observe() {} disconnect() {} };
   if (fetch) k.kontext.fetch = fetch;
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a", ...config });
   const calls = [];
   const hass = {
@@ -62,7 +62,7 @@ test("timeline: the slider reports its visible value as aria-valuetext after scr
   assert.equal(slider.getAttribute("aria-valuetext"), card._scrubLabelEl.textContent, "value text after load");
   const before = slider.getAttribute("aria-valuetext");
   slider.value = "20";
-  slider.listeners.input[0]();
+  feuere(slider, "input");
   const after = slider.getAttribute("aria-valuetext");
   assert.notEqual(after, before, "value text follows the slider");
   assert.equal(after, card._scrubLabelEl.textContent);
@@ -116,12 +116,12 @@ test("timeline: previous and next day step the date and load that day", async ()
   card._dateEl.value = card._day;
   const prev = card.shadowRoot.querySelector(".day-prev");
   const next = card.shadowRoot.querySelector(".day-next");
-  prev.listeners.click[0]({ stopPropagation() {} });
+  prev.click();
   await settle();
   assert.equal(card._day, "2026-02-28");
   assert.equal(card._dateEl.value, "2026-02-28");
-  next.listeners.click[0]({ stopPropagation() {} });
-  next.listeners.click[0]({ stopPropagation() {} });
+  next.click();
+  next.click();
   await settle();
   assert.equal(card._day, "2026-03-02");
   const last = calls[calls.length - 1];

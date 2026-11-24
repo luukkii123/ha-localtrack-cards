@@ -10,14 +10,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { XSS_PAYLOADS, activeMarkup } = require("./_testkit.cjs");
-const { ladeKarte, zonenKarte, ruhe } = require("./laden.js");
+const { ladeKarte, einhaengen, zonenKarte, ruhe } = require("./laden.js");
 
 const ADDRESS_FIELDS = ["road", "neighbourhood", "suburb", "village", "town", "city", "name"];
 
-/** Shadow tree plus the stub elements the card queried (they are not in the tree). */
+/** The whole shadow tree: the kit DOM of laden.js parses the skeleton markup,
+ *  so every element the card queried is part of it. */
 function rendered(card) {
-  const root = card.shadowRoot;
-  return [root, ...root._stubs.values()];
+  return [card.shadowRoot];
 }
 
 function assertClean(card, extra = []) {
@@ -59,6 +59,7 @@ function timelineCard({ payload, field, history }) {
   });
   const pins = [];
   const card = new k.LocaltrackTimelineCard();
+  einhaengen(card);
   card._leaflet = leaflet(pins);
   card._map = MAP;
   card.setConfig({ entity: "person.a", reverse_geocode: true });

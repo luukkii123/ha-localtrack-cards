@@ -7,7 +7,7 @@
 // all of hass.states for every point and every scrubber step.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte, ruhe, offen } = require("./laden.js");
+const { ladeKarte, feuere, einhaengen, ruhe, offen } = require("./laden.js");
 
 function leaflet() {
   const layer = () => ({ addTo() { return this; }, setLatLng() { return this; }, clearLayers() {}, removeLayer() {} });
@@ -53,7 +53,7 @@ function karte({ fetch, states: extra = {} } = {}) {
     ...extra,
   }, zaehler);
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a", reverse_geocode: true });
   card.hass = { states, entities: {}, locale: { language: "en" },
     callWS: () => Promise.resolve({ points: points(), total: 48, simplified: false }) };
@@ -80,7 +80,7 @@ test("place names are filled into their rows without rebuilding the list; focus 
   const list = card._segmentsEl;
   const rows = list.children.slice();
   const target = rows.find((r) => r.querySelector(".label").textContent === "Stay");
-  card.shadowRoot.activeElement = target;          // the user tabbed to this row
+  target.focus();                                  // the user tabbed to this row
   const writes = [];
   for (const method of ["insertBefore", "appendChild", "replaceChildren"]) {
     const original = list[method].bind(list);
@@ -117,7 +117,7 @@ test("zones are filtered once: scrubbing does not scan hass.states", async () =>
   assert.ok(afterLoad <= 1, `load scanned hass.states ${afterLoad} times`);
   for (let i = 0; i < 48; i += 1) {
     card._scrubberEl.value = String(i);
-    card._scrubberEl.listeners.input[0]();
+    feuere(card._scrubberEl, "input");
   }
   assert.equal(zaehler.scans, afterLoad, "no scan per scrubber step");
   assert.match(card._scrubLabelEl.textContent, /· (Work|on the move)$/);

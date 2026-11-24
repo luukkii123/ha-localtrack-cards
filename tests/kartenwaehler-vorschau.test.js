@@ -5,12 +5,12 @@
 // WebSocket, tile or Nominatim request. The picker places each preview in a
 // `div.preview` inside the shadow root of `hui-card-picker`, so the check
 // walks up across shadow boundaries. The same card on a dashboard still loads.
-// Clock and hass with request counters come from the shared test kit, the DOM
-// from laden.js (it parses the cards' skeleton markup); counters prove "0".
+// Clock, DOM and hass with request counters come from the shared test kit
+// (laden.js adds markup parsing and custom element reactions); counters prove "0".
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock, createHass } = require("./_testkit.cjs");
-const { ladeKarte, FakeElement } = require("./laden.js");
+const { ladeKarte, einhaengen } = require("./laden.js");
 
 function umgebung() {
   const clock = createClock();
@@ -39,22 +39,23 @@ function umgebung() {
 }
 
 /** Like hui-card-picker: create, setConfig with the stub, hass, then attach
- *  into `div.preview` inside the picker's shadow root. */
+ *  into `div.preview` inside the picker's shadow root (the picker is on the
+ *  page, so attaching runs connectedCallback). */
 function imWaehler(u, type) {
-  const picker = new FakeElement("hui-card-picker");
-  const shadow = new FakeElement("#shadow-root");
-  shadow.host = picker;               // as in the browser: the root knows its host
-  const preview = new FakeElement("div");
+  const doc = u.k.kontext.document;
+  const picker = doc.createElement("hui-card-picker");
+  const shadow = picker.attachShadow({ mode: "open" });   // the root knows its host
+  const preview = doc.createElement("div");
   preview.className = "preview";
   shadow.appendChild(preview);
+  doc.body.appendChild(picker);
   const Klasse = u.klassen[type];
   const card = new Klasse();
-  card.isConnected = false;
   card.setConfig(Klasse.getStubConfig(u.ha.hass));
   card.hass = u.ha.hass;
+  assert.equal(card.isConnected, false, "not attached before the picker places it");
   preview.appendChild(card);
-  card.isConnected = true;
-  card.connectedCallback();
+  assert.equal(card.isConnected, true);
   return card;
 }
 
@@ -99,15 +100,14 @@ test("on a dashboard both cards still load, once they are attached", async () =>
     map: () => ({ setView() {}, removeLayer() {}, invalidateSize() {} }) };
   for (const type of ["localtrack-timeline-card", "localtrack-zone-time-card"]) {
     const card = new u.klassen[type]();
-    card.isConnected = false;
     const vorher = anfragen(u.ha);
     card.setConfig(u.klassen[type].getStubConfig(u.ha.hass));
     card.hass = u.ha.hass;
     await u.clock.advance(0);
     assert.equal(anfragen(u.ha), vorher, `${type} fetched before being attached`);
-    new FakeElement("div").appendChild(card);
-    card.isConnected = true;
-    card.connectedCallback();
+    u.k.kontext.document.createElement("div").appendChild(card);
+    assert.equal(anfragen(u.ha), vorher, `${type} fetched in a detached element`);
+    einhaengen(card);
     await u.clock.advance(0);
   }
   assert.equal(u.ha.count("localtrack/history"), 1);

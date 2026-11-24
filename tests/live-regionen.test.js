@@ -8,7 +8,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte, zonenKarte, ruhe, offen, parseHtml } = require("./laden");
+const { ladeKarte, einhaengen, zonenKarte, ruhe, offen, parseHtml } = require("./laden");
 
 /** All elements of a markup string, depth first. */
 function alle(html) {
@@ -35,7 +35,7 @@ function timeline(callWS) {
     getBounds: () => ({ contains: () => true }) };
   card.setConfig({ entity: "person.a" });
   const markup = card.shadowRoot.innerHTML;
-  card.isConnected = true;
+  einhaengen(card);
   card.hass = { states: { "person.a": { attributes: {} } }, locale: { language: "en" }, callWS };
   return { card, markup };
 }
@@ -89,7 +89,6 @@ test("zone time: loading, an empty month and an error use the same region", asyn
   const { card, texte } = zonenKarte({
     callWS: (msg) => (msg.type === "localtrack/stats" ? Promise.resolve({ tracked: ["person.a"] }) : antwort.promise),
   });
-  card.isConnected = true;
   const region = card._statusEl;
   assert.equal(region.getAttribute("data-kind"), "loading");
   assert.equal(region.getAttribute("role"), "status");

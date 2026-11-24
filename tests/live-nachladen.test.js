@@ -10,7 +10,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock, createHass } = require("./_testkit.cjs");
-const { ladeKarte, ruhe } = require("./laden.js");
+const { ladeKarte, feuere, einhaengen, ruhe } = require("./laden.js");
 
 const DAY_START = 1_799_971_200; // 2027-01-15T00:00:00Z, the clock's day (UTC in the container)
 const NOW = 1_800_000_000;       // 08:00:00Z, createClock's start
@@ -140,7 +140,7 @@ async function karte({ store = morning(), config = {} } = {}) {
   });
   ha.respond("localtrack/history", server(store));
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a", ...config });
   card.hass = ha.hass;
   await clock.advance(0);
@@ -324,11 +324,11 @@ test("full fetch again after a gap, after a reached max_points and on another da
   // Another day picked and today picked again: the whole day.
   ctx = await karte();
   ctx.card._dateEl.value = "2027-01-14";
-  ctx.card._dateEl.listeners.change[0]();
+  feuere(ctx.card._dateEl, "change");
   await ctx.clock.advance(0);
   await ruhe();
   ctx.card._dateEl.value = "2027-01-15";
-  ctx.card._dateEl.listeners.change[0]();
+  feuere(ctx.card._dateEl, "change");
   await ctx.clock.advance(0);
   await ruhe();
   await bewege(ctx, stay(NOW + 20, NOW + 60, ...WORK));

@@ -7,7 +7,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClock, createHass } = require("./_testkit.cjs");
-const { ladeKarte, ruhe } = require("./laden.js");
+const { ladeKarte, feuere, einhaengen, ruhe } = require("./laden.js");
 
 const NOW = 1_800_000_000; // 2027-01-15T08:00:00Z
 
@@ -47,14 +47,14 @@ async function timeline() {
   const ha = createHass({ clock, states: { "person.a": { attributes: { friendly_name: "A", latitude: 50, longitude: 8 } } } });
   ha.respond("localtrack/history", tag);
   const card = new k.LocaltrackTimelineCard();
-  card.isConnected = true;
+  einhaengen(card);
   card.setConfig({ entity: "person.a" });
   card.hass = ha.hass;
   await clock.advance(0);
   await ruhe();
   const waehle = async (day) => {
     card._dateEl.value = day;
-    card._dateEl.listeners.change[0]();
+    feuere(card._dateEl, "change");
     await clock.advance(0);
     await ruhe();
   };
@@ -161,6 +161,7 @@ async function zonen() {
   ha.respond("localtrack/stats", { tracked: ["person.a"] });
   ha.respond("localtrack/zone_time", (msg) => monat(Number(msg.start.slice(0, 4)), Number(msg.start.slice(5, 7))));
   const card = new k.LocaltrackZoneTimeCard();
+  einhaengen(card);
   card.setConfig({ entity: "person.a", zone: "zone.work" });
   card.hass = ha.hass;
   await clock.advance(0);
@@ -216,6 +217,7 @@ test("zone time: first load without old content keeps the status line", async ()
   ha.respond("localtrack/stats", { tracked: ["person.a"] });
   ha.behave("localtrack/zone_time", { hang: true });
   const card = new k.LocaltrackZoneTimeCard();
+  einhaengen(card);
   card.setConfig({ entity: "person.a", zone: "zone.work" });
   card.hass = ha.hass;
   await clock.advance(0);

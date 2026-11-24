@@ -9,11 +9,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const { ladeKarte } = require('./laden.js');
 
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'dist', 'localtrack-cards.js'), 'utf8');
 const BEGIN = SOURCE.indexOf('/* BEGIN BUSCH SHARED UI'), END = SOURCE.indexOf('/* END BUSCH SHARED UI */');
-const UI = (() => { const box = {}; vm.createContext(box); return vm.runInContext(SOURCE.slice(BEGIN, END) + '\nBuschUI', box); })();
+const UI = ladeKarte(['BuschUI']).BuschUI;   // the bundle through the shared test kit (M5)
 // The card CSS interpolates the token in its template literals: resolve it before the rules are split at braces.
 const OWN = (SOURCE.slice(0, BEGIN) + SOURCE.slice(END)).split('${BuschUI.tokens.focusColor}').join(UI.tokens.focusColor);
 

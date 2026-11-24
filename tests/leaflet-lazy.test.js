@@ -6,7 +6,7 @@
 // instance whatever order the bundles load in.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ladeKarte } = require("./laden.js");
+const { ladeKarte, einhaengen } = require("./laden.js");
 
 /** A stand-in Leaflet that records the maps made with it. */
 function fremdesLeaflet() {
@@ -23,6 +23,7 @@ function fremdesLeaflet() {
 
 function timeline(k) {
   const card = new k.LocaltrackTimelineCard();
+  einhaengen(card);
   card.setConfig({ entity: "person.a" });
   return card;
 }
